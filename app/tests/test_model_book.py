@@ -258,12 +258,18 @@ def test_read_book_by_id_returns_existing_book():
         assert book_from_db.id == existing_book_id
 
 
-def test_read_book_by_title_return_none_when_book_not_found():
+def test_read_book_by_title_raises_BookNotFound_when_book_not_found():
     with Session(engine) as session:
         with pytest.raises(BookNotFound) as exc:
             read_book(session, title="no_such_book")
         assert "Book no_such_book not found." in str(exc.value)
 
+def test_read_book_by_id_raises_BookNotFound_when_book_not_found():
+    random_uuid = uuid.uuid4()
+    with Session(engine) as session:
+        with pytest.raises(BookNotFound) as exc:
+            read_book(session, id=random_uuid)
+        assert f"Book with id {random_uuid} not found." in str(exc.value)
 
 def test_read_book_raises_ValueError_when_both_title_and_id_provided():
     with Session(engine) as session:
