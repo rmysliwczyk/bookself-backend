@@ -1,0 +1,50 @@
+name: Testing and Coverage
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tests-and-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Run tests
+        run: |
+          pip install -r requirements.txt
+          pytest
+
+      - name: Get coverage
+        run: |
+          pytest --junitxml=pytest.xml --cov-report=term-missing --cov=app app/tests/ | tee pytest-coverage.txt
+
+      - name: Update coverage
+        id: coverage
+        uses: MishaKav/pytest-coverage-comment@v1
+        with:
+          pytest-coverage-path: pytest-coverage.txt
+          junitxml-path: pytest.xml
+          hide-comment: true
+
+      - name: Fail if coverage is not 100%
+        if: ${{ steps.coverage.outputs.coverage != '100%' }}
+        run: |
+          echo "Coverage is below 100%"
+          exit 1
+
+      - name: Update README
+        run: |
+          sed -i '/<!-- Pytest Coverage Comment:Begin -->/,/<!-- Pytest Coverage Comment:End -->/c\<!-- Pytest Coverage Comment:Begin -->\n${{ steps.coverage.outputs.coverageHtml }}\n<!-- Pytest Coverage Comment:End -->' ./README.md
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'Tests and coverage check'
+          file_pattern: README.md
