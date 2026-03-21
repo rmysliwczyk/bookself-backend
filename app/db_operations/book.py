@@ -54,3 +54,9 @@ def update_book(
     session.refresh(book)
 
     return book
+
+def delete_book(session: Session, title: str | None = None, id: uuid.UUID | None = None):
+    book_for_deletion = read_book(session, title=title, id=id)
+    session.delete(book_for_deletion)
+    session.commit()
+
