@@ -2,7 +2,7 @@
 import pytest
 import uuid
 
-from app.db_operations.book import BookNotFound, create_book, read_book, update_book
+from app.db_operations.book import BookNotFound, create_book, read_book, update_book, delete_book
 from app.models.book import (
     MAX_TITLE_LENGTH,
     MAX_REVIEW_LENGTH,
@@ -304,3 +304,10 @@ def test_update_book_raises_BookNotFound_when_book_does_not_exist_for_title_prov
         with pytest.raises(BookNotFound) as exc:
             update_book(session, data=BookUpdate(title="wont_happen"), title="not_real")
         assert "Book not_real not found." in str(exc.value)
+
+## Book - Delete
+def test_delete_book_deletes_book_successfully():
+    with Session(engine) as session:
+        delete_book(session, title="book1_updated")
+        with pytest.raises(BookNotFound):
+            read_book(session, title="book1_updated")
