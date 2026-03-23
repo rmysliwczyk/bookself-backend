@@ -54,30 +54,30 @@ def update_user(
     user = read_user(session, username=username, id=id)
     dumped_update_data = data.model_dump(exclude_unset=True)
 
-    followers_ids = []
-    if "followers_ids" in dumped_update_data:
-        followers_ids = dumped_update_data["followers_ids"]
-        del dumped_update_data["followers_ids"]
+    following_ids = []
+    if "following_ids" in dumped_update_data:
+        following_ids = dumped_update_data["following_ids"]
+        del dumped_update_data["following_ids"]
     if "password" in dumped_update_data:
         password = dumped_update_data["password"]
         del dumped_update_data["password"]
         dumped_update_data["hashed_password"] = hash_password(password)
 
     user.sqlmodel_update(dumped_update_data)
-    if followers_ids:
-        if user.id in followers_ids:
+    if following_ids:
+        if user.id in following_ids:
             raise ValueError("User cannot self-follow.")
-        followers_in_db = list(
-            session.exec(select(User).where(col(User.id).in_(followers_ids))).all()
+        followed_users_in_db = list(
+            session.exec(select(User).where(col(User.id).in_(following_ids))).all()
         )
-        for follower in followers_in_db:
-            followers_ids.remove(follower.id)
-        if followers_ids:
+        for followed_user in followed_users_in_db:
+            following_ids.remove(followed_user.id)
+        if following_ids:
             raise UserNotFound(
-                f"Followers: {" ".join([str(follower_id) for follower_id in followers_ids])} not found."
+                f"Followed users: {" ".join([str(following_id) for following_id in following_ids])} not found."
             )
         else:
-            user.followers = followers_in_db
+            user.following = followed_users_in_db
     session.add(user)
     session.commit()
     session.refresh(user)

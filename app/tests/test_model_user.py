@@ -3,6 +3,7 @@ import pytest
 import uuid
 
 from app.util.cryptography import hash_password
+from app.db_operations.book import create_book, read_book, BookNotFound
 from app.db_operations.user import (
     create_user,
     read_user,
@@ -10,6 +11,7 @@ from app.db_operations.user import (
     delete_user,
     UserNotFound,
 )
+from app.models.book import BookPublic, BookCreate
 from app.models.user import (
     BaseUser,
     User,
@@ -26,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import create_engine, Session, select, SQLModel
 from typing import Annotated
 
+UserPublic.model_rebuild()
 
 # Pydantic models validation tests
 ## BaseUser
@@ -73,19 +76,25 @@ def test_user_create_model_validation_fails_with_incorrect_fields():
 ## UserPublic
 def test_user_public_model_validation_successful_with_correct_fields():
     generated_uuid = uuid.uuid4()
+    book1 = BookPublic(id=uuid.uuid4() ,title="book1", rating=5, visibility_to_others=True, user_id=generated_uuid)
+    book2 = BookPublic(id=uuid.uuid4(), title="book2", rating=5, visibility_to_others=True, user_id=generated_uuid)
     user_public_data = UserPublic.model_validate(
-        {"id": generated_uuid, "username": "test", "role": "ADMIN"}
+        {"id": generated_uuid, "username": "test", "role": "ADMIN", "books": [book1, book2]}
     )
     assert user_public_data.id == generated_uuid
     assert user_public_data.username == "test"
     assert user_public_data.role == USER_ROLE.ADMIN
+    assert book1 in user_public_data.books
+    assert book2 in user_public_data.books
 
 
 ## UserPublicWithFollowers
 def test_user_public_with_followers_model_validation_successful_with_correct_fields():
     generated_uuid_follower1 = uuid.uuid4()
+    book1 = BookPublic(id=uuid.uuid4() ,title="book1", rating=5, visibility_to_others=True, user_id=generated_uuid_follower1)
+    book2 = BookPublic(id=uuid.uuid4(), title="book2", rating=5, visibility_to_others=True, user_id=generated_uuid_follower1)
     follower1 = UserPublic.model_validate(
-        {"id": generated_uuid_follower1, "username": "inner1", "role": "ADMIN"}
+        {"id": generated_uuid_follower1, "username": "inner1", "role": "ADMIN", "books": [book1, book2]}
     )
 
     generated_uuid_follower2 = uuid.uuid4()
@@ -100,7 +109,7 @@ def test_user_public_with_followers_model_validation_successful_with_correct_fie
             "username": "test",
             "role": "ADMIN",
             "followers": [follower1, follower2],
-            "following": [follower1],
+            "following": [follower1]
         }
     )
     assert user_public_data.id == generated_uuid
@@ -109,25 +118,26 @@ def test_user_public_with_followers_model_validation_successful_with_correct_fie
     assert user_public_data.followers[0] == follower1  # type: ignore
     assert user_public_data.followers[1] == follower2  # type: ignore
     assert user_public_data.following[0] == follower1  # type: ignore
+    assert book1 in user_public_data.followers[0].books
+    assert book2 in user_public_data.followers[0].books
 
 
 ## UserUpdate
 def test_user_update_model_validation_successful_with_correct_fields_all_fields():
     generated_uuid_follower1 = uuid.uuid4()
-
     generated_uuid_follower2 = uuid.uuid4()
 
     user_update_data = UserUpdate(
         username="test",
         password="test",
         role=USER_ROLE.ADMIN,
-        followers_ids=[generated_uuid_follower1, generated_uuid_follower2],
+        following_ids=[generated_uuid_follower1, generated_uuid_follower2]
     )
     assert user_update_data.username == "test"
     assert user_update_data.password == "test"
     assert user_update_data.role == USER_ROLE.ADMIN
-    assert user_update_data.followers_ids[0] == generated_uuid_follower1  # type: ignore
-    assert user_update_data.followers_ids[1] == generated_uuid_follower2  # type: ignore
+    assert user_update_data.following_ids[0] == generated_uuid_follower1  # type: ignore
+    assert user_update_data.following_ids[1] == generated_uuid_follower2  # type: ignore
 
 
 def test_user_update_model_validation_successful_with_correct_fields_partial_fields():
@@ -235,11 +245,13 @@ def test_read_user_raises_ValueError_Exception_when_no_username_or_id_provided()
 def test_update_user_correctly_executes_partial_update_on_existing_user():
     global existing_user_id
     with Session(engine) as session:
+        new_book = create_book(session, BookCreate(title="book1", rating=5, visibility_to_others=True, user_id=existing_user_id))
         updated_user = update_user(
             session, data=UserUpdate(username="updated_test"), id=existing_user_id
         )
         assert updated_user.username == "updated_test"
         assert updated_user.role == USER_ROLE.ADMIN  # Should remain unchaged
+        assert new_book in updated_user.books
 
 
 def test_update_user_raises_UserNotFound_Exception_when_user_does_not_exsist_for_username_provided():
@@ -286,28 +298,28 @@ def test_update_user_correctly_executes_complete_update_on_existing_user():
                 username="again_updated_test",
                 password=new_password,
                 role=USER_ROLE.REGULAR_USER,
-                followers_ids=[existing_user.id],
+                following_ids=[existing_user.id],
             ),
             id=existing_user_id,
         )
         assert updated_user.username == "again_updated_test"
         assert updated_user.hashed_password == new_password_hashed
         assert updated_user.role == USER_ROLE.REGULAR_USER
-        assert updated_user.followers[0] == existing_user
+        assert updated_user.following[0] == existing_user
 
 
-def test_update_user_raises_UserNotFound_Exception_when_all_followers_ids_not_found():
+def test_update_user_raises_UserNotFound_Exception_when_all_following_ids_not_found():
     random_non_existant_id = uuid.uuid4()
     with Session(engine) as session:
         with pytest.raises(UserNotFound):
             update_user(
                 session,
-                data=UserUpdate(followers_ids=[random_non_existant_id]),
+                data=UserUpdate(following_ids=[random_non_existant_id]),
                 username="again_updated_test",
             )
 
 
-def test_update_user_raises_UserNotFound_Exception_when_one_follower_id_not_found():
+def test_update_user_raises_UserNotFound_Exception_when_one_followed_user_id_not_found():
     global existing_user_id
     random_non_existant_id = uuid.uuid4()
     with Session(engine) as session:
@@ -315,36 +327,39 @@ def test_update_user_raises_UserNotFound_Exception_when_one_follower_id_not_foun
             update_user(
                 session,
                 data=UserUpdate(
-                    followers_ids=[random_non_existant_id, existing_user_id]
+                    following_ids=[random_non_existant_id, existing_user_id]
                 ),
                 username="test3",
             )
-        assert str(exc.value) == f"Followers: {random_non_existant_id} not found."
+        assert str(exc.value) == f"Followed users: {random_non_existant_id} not found."
 
 
-def test_update_user_permamanently_updates_the_follower():
+def test_update_user_permanently_updates_the_followed_user():
     with Session(engine) as session:
         create_user(
             session,
             user=UserCreate(username="bbb", password="bbb", role=USER_ROLE.ADMIN),
         )
 
-    follower_from_db_id = None
     with Session(engine) as session:
-        follower_from_db = read_user(session, username="bbb")
-        if follower_from_db:
-            follower_from_db_id = follower_from_db.id
+        user_to_be_followed_from_db_id = None
+        user_to_be_followed_from_db = read_user(session, username="bbb")
+        if user_to_be_followed_from_db:
+            user_to_be_followed_from_db_id = user_to_be_followed_from_db.id
             update_user(
                 session,
-                data=UserUpdate(followers_ids=[follower_from_db.id]),
+                data=UserUpdate(following_ids=[user_to_be_followed_from_db.id]),
                 username="test3",
             )
 
     with Session(engine) as session:
+        followed_user_from_db = read_user(session, username="bbb")
         user_from_db = read_user(session, username="test3")
         assert user_from_db != None
-        assert user_from_db.followers[0].id == follower_from_db_id
-        assert user_from_db.followers[0].username == "bbb"
+        assert user_from_db.following[0].id == user_to_be_followed_from_db_id
+        assert user_from_db.following[0].username == "bbb"
+        assert followed_user_from_db.followers[0].id == user_from_db.id
+        assert followed_user_from_db.followers[0] == user_from_db
 
 
 def test_update_user_raises_ValueError_when_user_attempting_to_follow_himself():
@@ -353,7 +368,7 @@ def test_update_user_raises_ValueError_when_user_attempting_to_follow_himself():
         with pytest.raises(ValueError):
             update_user(
                 session,
-                data=UserUpdate(followers_ids=[existing_user_id]),
+                data=UserUpdate(following_ids=[existing_user_id]),
                 id=existing_user_id,
             )
 
@@ -393,3 +408,41 @@ def test_user_delete_raises_ValueError_when_no_username_or_id_provided():
     with Session(engine) as session:
         with pytest.raises(ValueError):
             delete_user(session)
+
+
+def test_user_delete_executes_a_cascade_delete_of_related_books():
+    with Session(engine) as session:
+        user = create_user(
+            session, 
+            UserCreate(
+                username="book_owner",
+                password="book_owner",
+                role=USER_ROLE.REGULAR_USER
+            )
+        )
+
+        book1 = create_book(
+            session,
+            BookCreate(
+                title="book1",
+                rating=2,
+                visibility_to_others=True,
+                user_id=user.id
+            )
+        )
+        book1_id = book1.id
+
+        book2 = create_book(
+            session,
+            BookCreate(
+                title="book2",
+                rating=2,
+                visibility_to_others=True,
+                user_id=user.id
+            )
+        )
+        book2_id = book2.id
+
+        delete_user(session, id=user.id)
+        with pytest.raises(BookNotFound) as exc:
+            read_book(session, id=book1_id)
