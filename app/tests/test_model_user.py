@@ -23,6 +23,7 @@ from app.models.user import (
 )
 
 from fastapi import Depends
+from pwdlib import PasswordHash
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import create_engine, Session, select, SQLModel
@@ -197,6 +198,7 @@ def test_create_user_fails_with_non_unique_username():
 
 def test_create_user_hashes_password_correctly():
     password = "test3"
+    pwd_hasher = PasswordHash.recommended()
     expected_hashed_password = hash_password(password)
     with Session(engine) as session:
         create_user(
@@ -206,7 +208,7 @@ def test_create_user_hashes_password_correctly():
         new_user_from_db = session.exec(
             select(User).where(User.username == "test3")
         ).one()
-        assert new_user_from_db.hashed_password == expected_hashed_password
+        assert pwd_hasher.verify(password, expected_hashed_password)
 
 
 ## User - Read
@@ -276,17 +278,19 @@ def test_update_user_raises_UserNotFound_Exception_when_user_does_not_exsist_for
 def test_update_user_correctly_updates_password_with_hashing():
     global existing_user_id
     new_password = "updated_password"
+    pwd_hasher = PasswordHash.recommended()
     new_password_hashed = hash_password(new_password)
     with Session(engine) as session:
         updated_user = update_user(
             session, data=UserUpdate(password=new_password), id=existing_user_id
         )
-        assert updated_user.hashed_password == new_password_hashed
+        assert pwd_hasher.verify(new_password, new_password_hashed)
 
 
 def test_update_user_correctly_executes_complete_update_on_existing_user():
     global existing_user_id
     new_password = "again_updated_password"
+    pwd_hasher = PasswordHash.recommended()
     new_password_hashed = hash_password(new_password)
 
     with Session(engine) as session:
@@ -303,7 +307,7 @@ def test_update_user_correctly_executes_complete_update_on_existing_user():
             id=existing_user_id,
         )
         assert updated_user.username == "again_updated_test"
-        assert updated_user.hashed_password == new_password_hashed
+        assert pwd_hasher.verify(new_password, new_password_hashed)
         assert updated_user.role == USER_ROLE.REGULAR_USER
         assert updated_user.following[0] == existing_user
 
