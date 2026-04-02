@@ -26,7 +26,7 @@ class Book(BaseBook, table=True):
     cover_photo_url: str | None = Field(default=None)
     isbn: str | None = Field(default=None)
     user_id: uuid.UUID = Field(foreign_key="user.id")
-    user: 'User' = Relationship(back_populates="books")
+    user: "User" = Relationship(back_populates="books")
 
 
 class BookCreate(BaseBook):

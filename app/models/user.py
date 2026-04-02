@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.models.book import Book, BookPublic
 
+
 class UserFollowerLink(SQLModel, table=True):
     user_id: uuid.UUID | None = Field(
         default=None, foreign_key="user.id", primary_key=True
@@ -32,8 +33,8 @@ class BaseUser(SQLModel):
 class User(BaseUser, table=True):
     id: uuid.UUID | None = Field(primary_key=True, default_factory=uuid.uuid4)
     hashed_password: str = Field()
-    books: list['Book'] = Relationship(back_populates="user", cascade_delete=True)
-    following: list['User'] = Relationship(
+    books: list["Book"] = Relationship(back_populates="user", cascade_delete=True)
+    following: list["User"] = Relationship(
         back_populates="followers",
         link_model=UserFollowerLink,
         sa_relationship_kwargs={
@@ -41,7 +42,7 @@ class User(BaseUser, table=True):
             "secondaryjoin": "User.id==UserFollowerLink.user_id",
         },
     )
-    followers: list['User'] = Relationship(
+    followers: list["User"] = Relationship(
         back_populates="following",
         link_model=UserFollowerLink,
         sa_relationship_kwargs={
@@ -57,7 +58,7 @@ class UserCreate(BaseUser):
 
 class UserPublic(BaseUser):
     id: uuid.UUID
-    books: list['BookPublic'] | None = None
+    books: list["BookPublic"] | None = None
 
 
 class UserPublicWithFollowers(BaseUser):
