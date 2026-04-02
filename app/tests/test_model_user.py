@@ -31,6 +31,7 @@ from typing import Annotated
 
 UserPublic.model_rebuild()
 
+
 # Pydantic models validation tests
 ## BaseUser
 def test_base_user_model_validation_successful_with_correct_fields():
@@ -77,10 +78,27 @@ def test_user_create_model_validation_fails_with_incorrect_fields():
 ## UserPublic
 def test_user_public_model_validation_successful_with_correct_fields():
     generated_uuid = uuid.uuid4()
-    book1 = BookPublic(id=uuid.uuid4() ,title="book1", rating=5, visibility_to_others=True, user_id=generated_uuid)
-    book2 = BookPublic(id=uuid.uuid4(), title="book2", rating=5, visibility_to_others=True, user_id=generated_uuid)
+    book1 = BookPublic(
+        id=uuid.uuid4(),
+        title="book1",
+        rating=5,
+        visibility_to_others=True,
+        user_id=generated_uuid,
+    )
+    book2 = BookPublic(
+        id=uuid.uuid4(),
+        title="book2",
+        rating=5,
+        visibility_to_others=True,
+        user_id=generated_uuid,
+    )
     user_public_data = UserPublic.model_validate(
-        {"id": generated_uuid, "username": "test", "role": "ADMIN", "books": [book1, book2]}
+        {
+            "id": generated_uuid,
+            "username": "test",
+            "role": "ADMIN",
+            "books": [book1, book2],
+        }
     )
     assert user_public_data.id == generated_uuid
     assert user_public_data.username == "test"
@@ -92,10 +110,27 @@ def test_user_public_model_validation_successful_with_correct_fields():
 ## UserPublicWithFollowers
 def test_user_public_with_followers_model_validation_successful_with_correct_fields():
     generated_uuid_follower1 = uuid.uuid4()
-    book1 = BookPublic(id=uuid.uuid4() ,title="book1", rating=5, visibility_to_others=True, user_id=generated_uuid_follower1)
-    book2 = BookPublic(id=uuid.uuid4(), title="book2", rating=5, visibility_to_others=True, user_id=generated_uuid_follower1)
+    book1 = BookPublic(
+        id=uuid.uuid4(),
+        title="book1",
+        rating=5,
+        visibility_to_others=True,
+        user_id=generated_uuid_follower1,
+    )
+    book2 = BookPublic(
+        id=uuid.uuid4(),
+        title="book2",
+        rating=5,
+        visibility_to_others=True,
+        user_id=generated_uuid_follower1,
+    )
     follower1 = UserPublic.model_validate(
-        {"id": generated_uuid_follower1, "username": "inner1", "role": "ADMIN", "books": [book1, book2]}
+        {
+            "id": generated_uuid_follower1,
+            "username": "inner1",
+            "role": "ADMIN",
+            "books": [book1, book2],
+        }
     )
 
     generated_uuid_follower2 = uuid.uuid4()
@@ -110,7 +145,7 @@ def test_user_public_with_followers_model_validation_successful_with_correct_fie
             "username": "test",
             "role": "ADMIN",
             "followers": [follower1, follower2],
-            "following": [follower1]
+            "following": [follower1],
         }
     )
     assert user_public_data.id == generated_uuid
@@ -132,7 +167,7 @@ def test_user_update_model_validation_successful_with_correct_fields_all_fields(
         username="test",
         password="test",
         role=USER_ROLE.ADMIN,
-        following_ids=[generated_uuid_follower1, generated_uuid_follower2]
+        following_ids=[generated_uuid_follower1, generated_uuid_follower2],
     )
     assert user_update_data.username == "test"
     assert user_update_data.password == "test"
@@ -247,7 +282,15 @@ def test_read_user_raises_ValueError_Exception_when_no_username_or_id_provided()
 def test_update_user_correctly_executes_partial_update_on_existing_user():
     global existing_user_id
     with Session(engine) as session:
-        new_book = create_book(session, BookCreate(title="book1", rating=5, visibility_to_others=True, user_id=existing_user_id))
+        new_book = create_book(
+            session,
+            BookCreate(
+                title="book1",
+                rating=5,
+                visibility_to_others=True,
+                user_id=existing_user_id,
+            ),
+        )
         updated_user = update_user(
             session, data=UserUpdate(username="updated_test"), id=existing_user_id
         )
@@ -417,33 +460,27 @@ def test_user_delete_raises_ValueError_when_no_username_or_id_provided():
 def test_user_delete_executes_a_cascade_delete_of_related_books():
     with Session(engine) as session:
         user = create_user(
-            session, 
+            session,
             UserCreate(
                 username="book_owner",
                 password="book_owner",
-                role=USER_ROLE.REGULAR_USER
-            )
+                role=USER_ROLE.REGULAR_USER,
+            ),
         )
 
         book1 = create_book(
             session,
             BookCreate(
-                title="book1",
-                rating=2,
-                visibility_to_others=True,
-                user_id=user.id
-            )
+                title="book1", rating=2, visibility_to_others=True, user_id=user.id
+            ),
         )
         book1_id = book1.id
 
         book2 = create_book(
             session,
             BookCreate(
-                title="book2",
-                rating=2,
-                visibility_to_others=True,
-                user_id=user.id
-            )
+                title="book2", rating=2, visibility_to_others=True, user_id=user.id
+            ),
         )
         book2_id = book2.id
 

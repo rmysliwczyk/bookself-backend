@@ -19,18 +19,16 @@ def create_book(session: Session, book: BookCreate) -> Book:
     return new_book
 
 
-def read_book(
-    session: Session, id: uuid.UUID | None = None
-) -> Book:
+def read_book(session: Session, id: uuid.UUID | None = None) -> Book:
     book = None
 
     if not id:
         raise ValueError("Provide book id.")
-    
+
     book = session.exec(select(Book).where(Book.id == id)).first()
     if not book:
         raise BookNotFound(f"Book with id {id} not found.")
-    
+
     return book
 
 
@@ -48,8 +46,8 @@ def update_book(
 
     return book
 
+
 def delete_book(session: Session, id: uuid.UUID | None = None):
     book_for_deletion = read_book(session, id=id)
     session.delete(book_for_deletion)
     session.commit()
-
