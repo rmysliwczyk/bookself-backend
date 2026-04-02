@@ -4,6 +4,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  ALGORITHM: HS256
+  SECRET_KEY: NOT_SO_SECRET
+
 permissions:
   contents: write
 
