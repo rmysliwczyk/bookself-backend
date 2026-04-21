@@ -44,6 +44,8 @@ def read_user(
 
     return user
 
+def read_all_users(session: Session) -> list[User]:
+    return list(session.exec(select(User)).all())
 
 def update_user(
     session: Session,

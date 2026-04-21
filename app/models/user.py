@@ -31,7 +31,7 @@ class BaseUser(SQLModel):
 
 
 class User(BaseUser, table=True):
-    id: uuid.UUID | None = Field(primary_key=True, default_factory=uuid.uuid4)
+    id: uuid.UUID = Field(primary_key=True, default_factory=uuid.uuid4)
     hashed_password: str = Field()
     books: list["Book"] = Relationship(back_populates="user", cascade_delete=True)
     following: list["User"] = Relationship(
