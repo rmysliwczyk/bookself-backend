@@ -1,8 +1,7 @@
 import uuid
 
 from app.models.book import Book, BookCreate, BookUpdate
-from app.util.cryptography import hash_password
-from sqlmodel import col, Session, select
+from sqlmodel import Session, select
 
 
 class BookNotFound(Exception):
@@ -12,7 +11,7 @@ class BookNotFound(Exception):
 
 def create_book(session: Session, book: BookCreate) -> Book:
     book = BookCreate.model_validate(book)
-    new_book = Book(**book.model_dump())
+    new_book = Book.model_validate(book)
     session.add(new_book)
     session.commit()
     session.refresh(new_book)
@@ -31,6 +30,8 @@ def read_book(session: Session, id: uuid.UUID | None = None) -> Book:
 
     return book
 
+def read_all_books(session: Session) -> list[Book]:
+    return list(session.exec(select(Book)).all())
 
 def update_book(
     session: Session,
@@ -38,7 +39,7 @@ def update_book(
     id: uuid.UUID | None = None,
 ) -> Book:
     book = read_book(session, id=id)
-
+    BookUpdate.model_validate(book)
     book.sqlmodel_update(data.model_dump(exclude_unset=True))
     session.add(book)
     session.commit()

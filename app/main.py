@@ -1,4 +1,5 @@
 from app.routes.books import router as books_router
+from app.routes.users import router as users_router
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,3 +14,4 @@ def read_status():
 
 
 app.include_router(books_router)
+app.include_router(users_router)

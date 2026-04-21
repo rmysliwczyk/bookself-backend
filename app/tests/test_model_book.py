@@ -13,6 +13,7 @@ from app.db_operations.user import create_user
 from app.models.book import (
     MAX_TITLE_LENGTH,
     MAX_REVIEW_LENGTH,
+    MAX_AUTHOR_LENGTH,
     BaseBook,
     Book,
     BookCreate,
@@ -61,12 +62,16 @@ def test_base_book_model_validation_fails_with_missing_required_fields():
     assert "visibility_to_others\n  Field required" in str(exc.value)
 
 
-def test_base_book_mode_validation_fails_with_incorrect_fields():
+def test_base_book_model_validation_fails_with_incorrect_fields():
     with pytest.raises(ValidationError) as exc:
         BaseBook(name="book_title", grade=10, is_visible=True)  # type: ignore
     assert "title\n  Field required" in str(exc.value)
     assert "rating\n  Field required" in str(exc.value)
     assert "visibility_to_others\n  Field required" in str(exc.value)
+
+def test_base_book_model_validation_successful_with_correct_fields_and_author():
+    new_base_book = BaseBook(title="book_title", author="John Doe", rating=10, visibility_to_others=True)
+    assert new_base_book.author == "John Doe"
 
 
 ## BookCreate
@@ -203,6 +208,31 @@ def test_book_create_model_validation_fails_with_incorrect_isbn():
     assert "isbn\n  Provided digit is invalid" in str(exc.value)
 
 
+def test_book_create_model_validation_successful_with_correct_fields_and_author():
+    fake_user_id = uuid.uuid4()
+    book_creation_data = BookCreate(
+        title="book_title", author="fake_author", rating=10, visibility_to_others=True, user_id=fake_user_id
+    )
+    assert book_creation_data.title == "book_title"
+    assert book_creation_data.author == "fake_author"
+    assert book_creation_data.rating == 10
+    assert book_creation_data.visibility_to_others == True
+    assert book_creation_data.user_id == fake_user_id
+
+
+def test_book_create_model_validation_fails_with_author_longer_than_max_length():
+    author = "A" * MAX_AUTHOR_LENGTH + "A"
+    fake_user_id = uuid.uuid4()
+    with pytest.raises(ValidationError) as exc:
+        BookCreate(
+            title="book_title",
+            author=author,
+            rating=10,
+            visibility_to_others=True,
+            user_id=fake_user_id,
+        )
+    assert f"author\n  String should have at most {MAX_AUTHOR_LENGTH}" in str(exc.value)
+
 ## BookPublic
 def test_book_public_model_validation_successful_with_correct_fields():
     generated_uuid = uuid.uuid4()
@@ -248,7 +278,7 @@ def test_book_update_model_validation_successful_with_correct_fields_all_fields_
 def test_book_model_validation_successful_with_correct_required_fields():
     generated_id = uuid.uuid4()
     new_book = Book(
-        id=generated_id, title="table_book", rating=7, visibility_to_others=True
+            id=generated_id, title="table_book", rating=7, visibility_to_others=True # type: ignore
     )
     assert new_book.title == "table_book"
     assert new_book.rating == 7
@@ -287,6 +317,17 @@ def test_create_book_creates_book_with_correct_fields():
         assert new_book_from_db.user == new_user
         existing_book_id = new_book_from_db.id
 
+
+def test_create_book_creates_book_with_correct_fields_and_author():
+    global existing_user_id
+    with Session(engine) as session:
+        create_book(session, BookCreate(title="book_author", author="author1", rating=5, visibility_to_others=True, user_id=existing_user_id, isbn="1111111111"))  # type: ignore
+        new_book_from_db = session.exec(select(Book).where(Book.title == "book_author")).one()
+        assert new_book_from_db.title == "book_author"
+        assert new_book_from_db.author == "author1"
+        assert new_book_from_db.rating == 5
+        assert new_book_from_db.visibility_to_others == True
+        assert new_book_from_db.user_id == existing_user_id
 
 ## Book - Read
 def test_read_book_by_id_returns_existing_book():
