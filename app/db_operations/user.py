@@ -1,6 +1,6 @@
 import uuid
 
-from app.models.user import User, UserCreate, UserUpdate
+from app.models.user import User, UserCreate, UserUpdate, UserPublicWithFollowers
 from app.util.cryptography import hash_password
 from sqlmodel import col, Session, select
 
@@ -57,8 +57,11 @@ def update_user(
     dumped_update_data = data.model_dump(exclude_unset=True)
 
     following_ids = []
+    remove_all_followed_users = False
     if "following_ids" in dumped_update_data:
         following_ids = dumped_update_data["following_ids"]
+        if len(following_ids) == 0:
+            remove_all_followed_users = True
         del dumped_update_data["following_ids"]
     if "password" in dumped_update_data:
         password = dumped_update_data["password"]
@@ -80,6 +83,10 @@ def update_user(
             )
         else:
             user.following = followed_users_in_db
+
+    if remove_all_followed_users:
+        user.following = []
+
     session.add(user)
     session.commit()
     session.refresh(user)

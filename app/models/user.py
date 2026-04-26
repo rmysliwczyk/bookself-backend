@@ -63,6 +63,7 @@ class UserPublic(BaseUser):
 
 class UserPublicWithFollowers(BaseUser):
     id: uuid.UUID
+    books: list["BookPublic"] | None = None
     following: list[UserPublic] | None = None
     followers: list[UserPublic] | None = None
 
@@ -72,4 +73,4 @@ class UserUpdate(SQLModel):
     username: str | None = None
     password: str | None = None
     role: USER_ROLE | None = None
-    following_ids: list[uuid.UUID | None] | None = None
+    following_ids: list[uuid.UUID] | None = None
