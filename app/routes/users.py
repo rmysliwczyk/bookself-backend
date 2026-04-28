@@ -1,11 +1,28 @@
 import uuid
 
-from fastapi import APIRouter, Response, HTTPException
 from app.db_operations.dependencies import SessionDep
 from app.db_operations.user import create_user, delete_user, read_all_users, read_user, update_user, UserNotFound
 from app.models.user import User, UserCreate, UserPublic, UserPublicWithFollowers, UserUpdate
+from app.util.auth import jwt_encode
+from app.util.cryptography import verify_password
+from fastapi import APIRouter, Form, Response, HTTPException
+from typing import Annotated
 
 router = APIRouter(prefix="/users")
+
+@router.post("/login")
+def login(session: SessionDep, username: Annotated[str, Form()], password: Annotated[str, Form()]):
+    credentials_exception = HTTPException(status_code=401, detail="Invalid username or password")
+    try:
+        user = read_user(session, username=username)
+    except UserNotFound:
+        raise credentials_exception
+
+    if not verify_password(password, user.hashed_password):
+        raise credentials_exception
+
+    token = jwt_encode({"sub": user.username})
+    return {"access_token": token, "token_type": "bearer"}
 
 @router.post("", response_model=UserPublic)
 def create(session: SessionDep, data: UserCreate) -> User:

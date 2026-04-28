@@ -33,6 +33,23 @@ def client_fixture(session: Session):
     app.dependency_overrides.clear()
 
 
+# TODO: Uncomment when auth implemented for this route
+# def test_create_books_returns_401_when_no_valid_auth_token_included(session: Session, client: TestClient):
+#     user = create_user(
+#         session, UserCreate(username="test-auth", password="test", role=USER_ROLE.ADMIN)
+#     )
+#     post_response = client.post(
+#         "/books",
+#         json={
+#             "title": "this-book-shouldnt-exist",
+#             "rating": 5,
+#             "visibility_to_others": True,
+#             "user_id": str(user.id),
+#             "isbn": "1111111111",
+#         },
+#     )
+#     assert post_response.status_code == 401
+
 def test_create_books_successfully_adds_valid_book(session: Session, client: TestClient):
     global existing_user_id
     global existing_book_id
