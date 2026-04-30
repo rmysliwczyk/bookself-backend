@@ -30,6 +30,16 @@ def client_fixture(session: Session):
     yield client
     app.dependency_overrides.clear()
 
+@pytest.fixture(name="token", scope="module")
+def token_fixture(session: Session, client: TestClient):
+    try:
+        read_user(session, username="fixture-user")
+    except UserNotFound:
+        create_user(session, UserCreate(username="fixture-user", password="password", role=USER_ROLE.ADMIN))
+
+    post_response = client.post("/users/login", data={"username": "fixture-user", "password": "password"})
+    return post_response.json()["access_token"]
+
 def test_create_users_successfully_adds_valid_user(client: TestClient):
     global existing_user_id
     post_response = client.post("/users", json={"username": "test-1", "password": "pass-1", "role": "ADMIN"})
@@ -78,7 +88,7 @@ def test_update_users_user_id_returns_404_if_user_doesnt_exist(client: TestClien
     put_response = client.put(f"/users/{uuid.uuid4()}", json={"username": "madeup"})
     assert put_response.status_code == 404
 
-def test_read_user_user_id_successfully_returns_user_with_following(session: Session, client: TestClient):
+def test_read_user_user_id_successfully_returns_user_with_following(client: TestClient):
     global existing_user_id
     get_response = client.get(f"/users/{existing_user_id}")
     assert get_response.status_code == 200
@@ -130,4 +140,9 @@ def test_read_all_users_successfully_returns_empty_list_if_no_users(session: Ses
     get_response = client.get("/users")
     assert get_response.status_code == 200
     assert len(get_response.json()) == 0
+
+def test_read_users_me_successfully_returns_information_about_token_owner(client: TestClient, token: str):
+    get_response = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert get_response.status_code == 200
+    assert get_response.json()["username"] == "fixture-user"
 

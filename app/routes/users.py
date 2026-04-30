@@ -35,6 +35,10 @@ def read_all(session: SessionDep) -> list[User]:
     users = read_all_users(session)
     return users
 
+@router.get("/me")
+def read_me(current_user: Annotated[User, Depends(get_current_user)]):
+    return current_user
+
 @router.get("/{user_id}", response_model=UserPublicWithFollowers)
 def read(session: SessionDep, user_id: uuid.UUID) -> User:
     try:
@@ -43,9 +47,6 @@ def read(session: SessionDep, user_id: uuid.UUID) -> User:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@router.get("/me")
-def read_me(current_user: Annotated[User, Depends(get_current_user)]):
-    pass
 
 @router.put("/{user_id}", response_model=UserPublicWithFollowers)
 def update(session: SessionDep, user_id: uuid.UUID, data: UserUpdate) -> User:
@@ -60,4 +61,5 @@ def update(session: SessionDep, user_id: uuid.UUID, data: UserUpdate) -> User:
 def delete(session: SessionDep, user_id: uuid.UUID) -> Response:
     delete_user(session, id=user_id)
     return Response(status_code=200, content="OK")
+
 
