@@ -7,9 +7,10 @@ from app.routes.users import router as users_router
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.oauth2 import OAuth2PasswordBearer
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # Rebuilding models with incomplete relationships
 Book.model_rebuild()
