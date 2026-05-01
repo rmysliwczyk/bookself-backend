@@ -86,3 +86,13 @@ def test_login_returns_token_when_valid_credentials_provided(client: TestClient)
     assert post_response.json()["token_type"] == "bearer"
     payload = jwt_decode(post_response.json()["access_token"])
     assert payload["sub"] == "test"
+
+def test_login_returns_401_when_invalid_username_provided(client: TestClient):
+    post_response = client.post("/users/login", data={"username": "notindatabase", "password": "password"})
+    assert post_response.status_code == 401
+    assert post_response.json()["detail"] == "Invalid username or password"
+
+def test_login_returns_401_when_invalid_password_provided(client: TestClient):
+    post_response = client.post("/users/login", data={"username": "test", "password": "incorrect_password"})
+    assert post_response.status_code == 401
+    assert post_response.json()["detail"] == "Invalid username or password"
