@@ -10,6 +10,7 @@ from app.util.cryptography import hash_password, verify_password
 from app.util.auth import jwt_encode, jwt_decode, get_current_user
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pwdlib import PasswordHash
 from sqlmodel import create_engine, Session, StaticPool, SQLModel
@@ -96,3 +97,19 @@ def test_login_returns_401_when_invalid_password_provided(client: TestClient):
     post_response = client.post("/users/login", data={"username": "test", "password": "incorrect_password"})
     assert post_response.status_code == 401
     assert post_response.json()["detail"] == "Invalid username or password"
+
+def test_get_current_user_raises_exception_when_sub_not_in_token(session: Session):
+    bad_token = jwt_encode({"not_sub": "something"})
+    with pytest.raises(HTTPException):
+        get_current_user(bad_token, session)
+
+def test_get_current_user_raises_exception_when_sub_contains_invalid_user(session: Session):
+    bad_token = jwt_encode({"sub": "not_real_user"})
+    with pytest.raises(HTTPException):
+        get_current_user(bad_token, session)
+
+def test_get_current_user_raises_exception_when_jwt_token_invalid(session: Session):
+    bad_token = "THISISNOTREALLYAJWTTOKEN"
+    with pytest.raises(HTTPException):
+        get_current_user(bad_token, session)
+
