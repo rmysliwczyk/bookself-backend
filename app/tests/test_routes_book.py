@@ -103,17 +103,17 @@ def test_read_books_successfully_reads_all_books(session: Session, client: TestC
 
 def test_update_books_book_id_successfully_updates_an_existing_book(session: Session, client: TestClient):
     global existing_book_id
-    put_response = client.put(f"/books/{existing_book_id}", json={"title": "book-1", "author":"john doe"})
-    assert put_response.status_code == 200
-    assert put_response.json()["title"] == "book-1"
-    assert put_response.json()["author"] == "john doe"
+    patch_response = client.patch(f"/books/{existing_book_id}", json={"title": "book-1", "author":"john doe"})
+    assert patch_response.status_code == 200
+    assert patch_response.json()["title"] == "book-1"
+    assert patch_response.json()["author"] == "john doe"
 
 def test_update_books_book_id_successfully_updates_an_existing_book_with_user_id(session: Session, client: TestClient):
     global existing_book_id
     new_user = create_user(session, UserCreate(username="test3", password="test3", role=USER_ROLE.REGULAR_USER))
-    put_response = client.put(f"/books/{existing_book_id}", json={"user_id": str(new_user.id)})
-    assert put_response.status_code == 200
-    assert put_response.json()["user_id"] == str(new_user.id)
+    patch_response = client.patch(f"/books/{existing_book_id}", json={"user_id": str(new_user.id)})
+    assert patch_response.status_code == 200
+    assert patch_response.json()["user_id"] == str(new_user.id)
 
 def test_delete_books_book_id_successfully_deletes_an_existing_book(session: Session, client: TestClient):
     global existing_book_id

@@ -45,4 +45,11 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], session: Ses
 
     return user
 
+def allowed_roles(allowed_roles: list[USER_ROLE]):
+    authorization_exception = HTTPException(status_code=401, detail="Not authorized")
 
+    def check_role(current_user: Annotated[User, Depends(get_current_user)]):
+        if current_user.role not in allowed_roles:
+            raise authorization_exception
+
+    return check_role

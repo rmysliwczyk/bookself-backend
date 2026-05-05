@@ -1,19 +1,21 @@
 import jwt
 import pytest
 import os
+import types
 
 from app.db_operations.dependencies import get_session
 from app.db_operations.user import create_user, delete_user, read_user, UserNotFound
 from app.main import app
 from app.models.user import *
 from app.util.cryptography import hash_password, verify_password
-from app.util.auth import jwt_encode, jwt_decode, get_current_user
+from app.util.auth import jwt_encode, jwt_decode, get_current_user, allowed_roles
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pwdlib import PasswordHash
 from sqlmodel import create_engine, Session, StaticPool, SQLModel
+
 
 load_dotenv()
 
@@ -44,6 +46,15 @@ def client_fixture(session: Session):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(name="token", scope="module")
+def token_fixture(session: Session, client: TestClient):
+    try:
+        read_user(session, username="fixture-user")
+    except UserNotFound:
+        create_user(session, UserCreate(username="fixture-user", password="password", role=USER_ROLE.REGULAR_USER))
+
+    post_response = client.post("/users/login", data={"username": "fixture-user", "password": "password"})
+    return post_response.json()["access_token"]
 
 # Cryptographic functions
 def test_hash_password_hashes_password_correctly():
@@ -112,4 +123,31 @@ def test_get_current_user_raises_exception_when_jwt_token_invalid(session: Sessi
     bad_token = "THISISNOTREALLYAJWTTOKEN"
     with pytest.raises(HTTPException):
         get_current_user(bad_token, session)
+
+def test_allowed_roles_returns_a_function():
+    check_roles_func = allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER])
+    assert isinstance(check_roles_func, types.FunctionType)
+
+def test_read_all_users_returns_401_for_regular_user(client: TestClient, token: str):
+    get_response = client.get("/users", headers={"Authorization": f"Bearer {token}"})
+    assert get_response.status_code == 401
+    assert get_response.json()["detail"] == "Not authorized"
+
+def test_create_users_returns_401_for_regular_user(client: TestClient, token: str):
+    post_response = client.post("/users", headers={"Authorization": f"Bearer {token}"}, json={"username": "test-1", "password": "pass-1", "role": "ADMIN"})
+    assert post_response.status_code == 401
+    assert post_response.json()["detail"] == "Not authorized"
+
+def test_read_user_user_id_returns_401_for_regular_user(client: TestClient, token: str):
+    global existing_user_id
+    post_response = client.get(f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"})
+    assert post_response.status_code == 401
+    assert post_response.json()["detail"] == "Not authorized"
+
+def test_update_users_user_id_returns_401_for_regular_user(client: TestClient, token: str):
+    global existing_user_id
+    patch_response = client.patch(f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"}, json={"username": "test-new-1"})
+    assert patch_response.status_code == 401
+    assert patch_response.json()["detail"] == "Not authorized"
+
 

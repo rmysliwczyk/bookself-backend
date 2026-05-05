@@ -26,7 +26,7 @@ def read(session: SessionDep, user_id: uuid.UUID) -> list[Book]:
     user = read_user(session, id=user_id)
     return user.books
 
-@router.put("/{book_id}", response_model=BookPublic)
+@router.patch("/{book_id}", response_model=BookPublic)
 def update(session: SessionDep, book_id: uuid.UUID, data: BookUpdate) -> Book:
     book = update_book(session, data, id=book_id)
     return book
