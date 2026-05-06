@@ -73,8 +73,14 @@ def test_create_books_successfully_adds_valid_book(session: Session, client: Tes
     existing_user_id = user.id
     existing_book_id = post_response.json()["id"]
 
+def test_read_books_user_id_returns_401_when_no_valid_auth_token_included(client: TestClient):
+    get_response = client.get(f"/books/{existing_user_id}")
+    assert get_response.status_code == 401
+
 def test_read_books_user_id_successfully_reads_all_books_for_a_user(client: TestClient):
     global existing_user_id
+    post_response = client.post("/users/login", data={"username": "test", "password": "test"})
+    token = post_response.json()["access_token"]
     client.post(
         "/books",
         json={
@@ -84,9 +90,10 @@ def test_read_books_user_id_successfully_reads_all_books_for_a_user(client: Test
             "user_id": str(existing_user_id),
             "isbn": "1111111111",
         },
+        headers={"Authorization": f"Bearer {token}"}
     )
 
-    get_response = client.get(f"/books/{existing_user_id}")
+    get_response = client.get(f"/books/{existing_user_id}", headers={"Authorization": f"Bearer {token}"})
     assert get_response.status_code == 200
     print(get_response.json())
     assert get_response.json()[0]["title"] == "book1"
