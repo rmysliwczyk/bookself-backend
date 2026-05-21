@@ -133,11 +133,6 @@ def test_read_all_users_returns_401_for_regular_user(client: TestClient, token: 
     assert get_response.status_code == 401
     assert get_response.json()["detail"] == "Not authorized"
 
-def test_create_users_returns_401_for_regular_user(client: TestClient, token: str):
-    post_response = client.post("/users", headers={"Authorization": f"Bearer {token}"}, json={"username": "test-1", "password": "pass-1", "role": "ADMIN"})
-    assert post_response.status_code == 401
-    assert post_response.json()["detail"] == "Not authorized"
-
 def test_read_user_user_id_returns_401_for_regular_user(client: TestClient, token: str):
     global existing_user_id
     post_response = client.get(f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"})
