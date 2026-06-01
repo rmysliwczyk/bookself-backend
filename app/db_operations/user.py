@@ -9,6 +9,9 @@ class UserNotFound(Exception):
     def __init__(self, message):
         super().__init__(message)
 
+class SelfFollowError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
 
 def create_user(session: Session, user: UserCreate) -> User:
     user = UserCreate.model_validate(user)
@@ -71,7 +74,7 @@ def update_user(
     user.sqlmodel_update(dumped_update_data)
     if following_ids:
         if user.id in following_ids:
-            raise ValueError("User cannot self-follow.")
+            raise SelfFollowError("User cannot self-follow.")
         followed_users_in_db = list(
             session.exec(select(User).where(col(User.id).in_(following_ids))).all()
         )

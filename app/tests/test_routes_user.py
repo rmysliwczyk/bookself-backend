@@ -151,6 +151,21 @@ def test_update_users_user_id_successfully_updates_an_existing_user_to_add_follo
     assert patch_response.json()["following"][0]["username"] == "test-2"
 
 
+def test_update_users_user_id_returns_400_when_user_tries_to_self_follow(
+    client: TestClient, regular_token: str
+):
+    get_response = client.get("/users/me", headers={"Authorization": f"Bearer {regular_token}"})
+    assert get_response.status_code == 200
+    user_id = get_response.json()["id"]
+
+    patch_response = client.patch(
+        f"/users/{user_id}",
+        headers={"Authorization": f"Bearer {regular_token}"},
+        json={"following_ids": [str(user_id)]},
+    )
+    assert patch_response.status_code == 400
+    assert "User cannot self-follow." in patch_response.json()["detail"]
+
 def test_update_users_user_id_returns_404_if_user_doesnt_exist(
     client: TestClient, token: str
 ):

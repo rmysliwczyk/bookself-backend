@@ -1,9 +1,11 @@
 import os
 import pytest
 
-from app.db_operations.dependencies import get_session, create_admin
+from app.db_operations.dependencies import create_admin, initialize_database, get_session
 from app.db_operations.user import read_user
-from app.main import app
+from app.main import app, mylifespan
+
+from fastapi.testclient import TestClient
 from sqlmodel import create_engine, Session, StaticPool, SQLModel
 from dotenv import load_dotenv
 
@@ -30,3 +32,23 @@ def test_create_default_admin_creates_a_default_admin(session: Session):
     user = read_user(session, username=admin_username)
     assert user.username == admin_username
 
+def test_initialize_database_successfully_initializes_db(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    initialize_database()
+    assert os.path.exists("test.db")
+    os.remove("test.db")
+
+def test_initialize_database_skips_initialization_when_db_exists(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    initialize_database()
+    assert os.path.exists("test.db")
+    initialize_database()
+    assert os.path.exists("test.db")
+    os.remove("test.db")
+
+def test_fastapi_lifespan_initializes_db(monkeypatch):
+    assert os.path.exists("test.db") == False
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    with TestClient(app) as client:
+        assert os.path.exists("test.db")
+    os.remove("test.db")

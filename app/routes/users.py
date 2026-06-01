@@ -1,7 +1,7 @@
 import uuid
 
 from app.db_operations.dependencies import SessionDep
-from app.db_operations.user import create_user, delete_user, read_all_users, read_user, update_user, UserNotFound
+from app.db_operations.user import create_user, delete_user, read_all_users, read_user, update_user, SelfFollowError, UserNotFound
 from app.models.user import USER_ROLE, User, UserCreate, UserPublic, UserPublicWithFollowers, UserUpdate
 from app.util.auth import allowed_roles, jwt_encode, get_current_user
 from app.util.cryptography import verify_password
@@ -59,6 +59,8 @@ def update(session: SessionDep, user_id: uuid.UUID, data: UserUpdate, current_us
         raise HTTPException(status_code=401, detail="Not authorized")
     try:
         user = update_user(session, id=user_id, data=data)
+    except SelfFollowError:
+        raise HTTPException(status_code=400, detail="User cannot self-follow.")
     except UserNotFound:
         raise HTTPException(status_code=404, detail="User not found")
 
