@@ -9,6 +9,7 @@ from app.db_operations.user import (
     read_user,
     update_user,
     delete_user,
+    SelfFollowError,
     UserNotFound,
 )
 from app.models.book import BookPublic, BookCreate
@@ -409,10 +410,10 @@ def test_update_user_permanently_updates_the_followed_user():
         assert followed_user_from_db.followers[0] == user_from_db
 
 
-def test_update_user_raises_ValueError_when_user_attempting_to_follow_himself():
+def test_update_user_raises_SelfFollowError_when_user_attempting_to_follow_himself():
     global existing_user_id
     with Session(engine) as session:
-        with pytest.raises(ValueError):
+        with pytest.raises(SelfFollowError):
             update_user(
                 session,
                 data=UserUpdate(following_ids=[existing_user_id]),

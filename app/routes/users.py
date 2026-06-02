@@ -1,12 +1,13 @@
 import uuid
 
 from app.db_operations.dependencies import SessionDep
-from app.db_operations.user import create_user, delete_user, read_all_users, read_user, update_user, UserNotFound
+from app.db_operations.user import create_user, delete_user, read_all_users, read_user, update_user, SelfFollowError, UserNotFound
 from app.models.user import USER_ROLE, User, UserCreate, UserPublic, UserPublicWithFollowers, UserUpdate
 from app.util.auth import allowed_roles, jwt_encode, get_current_user
 from app.util.cryptography import verify_password
 from fastapi import APIRouter, Depends, Response, HTTPException
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 from typing import Annotated
 
 router = APIRouter(prefix="/users")
@@ -25,9 +26,13 @@ def login(session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, D
     token = jwt_encode({"sub": user.username})
     return {"access_token": token, "token_type": "bearer", "user": user}
 
-@router.post("", response_model=UserPublic, dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN]))])
+@router.post("", response_model=UserPublic)
 def create(session: SessionDep, data: UserCreate) -> User:
-    new_user = create_user(session, data)
+    try:
+        new_user = create_user(session, data)
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="User with that username already exists")
     return new_user
 
 @router.get("", response_model=list[UserPublicWithFollowers], dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN]))])
@@ -54,13 +59,18 @@ def update(session: SessionDep, user_id: uuid.UUID, data: UserUpdate, current_us
         raise HTTPException(status_code=401, detail="Not authorized")
     try:
         user = update_user(session, id=user_id, data=data)
+    except SelfFollowError:
+        raise HTTPException(status_code=400, detail="User cannot self-follow.")
     except UserNotFound:
         raise HTTPException(status_code=404, detail="User not found")
 
     return user
 
-@router.delete("/{user_id}")
-def delete(session: SessionDep, user_id: uuid.UUID) -> Response:
+@router.delete("/{user_id}", dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER]))])
+def delete(session: SessionDep, user_id: uuid.UUID, current_user: Annotated[User, Depends(get_current_user)]) -> Response:
+    if current_user.id != id and current_user.role != USER_ROLE.ADMIN:
+        raise HTTPException(status_code=401, detail="Not authorized")
+
     delete_user(session, id=user_id)
     return Response(status_code=200, content="OK")
 
