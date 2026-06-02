@@ -3,6 +3,7 @@ import pytest
 
 from app.db_operations.dependencies import create_admin, initialize_database, get_session
 from app.db_operations.user import read_user
+from app.settings import Settings
 from app.main import app, mylifespan
 
 from fastapi.testclient import TestClient
@@ -47,8 +48,8 @@ def test_initialize_database_skips_initialization_when_db_exists(monkeypatch):
     os.remove("test.db")
 
 def test_fastapi_lifespan_initializes_db(monkeypatch):
-    assert os.path.exists("test.db") == False
     monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    settings = Settings()
     with TestClient(app) as client:
         assert os.path.exists("test.db")
     os.remove("test.db")

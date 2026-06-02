@@ -1,16 +1,14 @@
 import os
 
+from app.db_operations.user import create_user
 from app.models.user import *
 from app.models.book import *
-from app.db_operations.user import create_user
+from app.settings import Settings
 
-from dotenv import load_dotenv
 from fastapi import Depends
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import create_engine, Session, SQLModel
 from typing import Annotated
-
-load_dotenv()
 
 engine = None # Will be initialized in initialize_database on startup
 
@@ -19,13 +17,15 @@ def get_session():
         yield session
 
 def create_admin(session: Session):
-    admin_username = os.environ["ADMIN_USERNAME"]
-    admin_password = os.environ["ADMIN_PASSWORD"]
+    settings = Settings()
+    admin_username = settings.admin_username
+    admin_password = settings.admin_password
     create_user(session, user=UserCreate(username=admin_username, password=admin_password, role=USER_ROLE.ADMIN))
 
 def initialize_database():
     global engine
-    DB_URL = os.environ["DATABASE_URL"]
+    settings = Settings()
+    DB_URL = settings.database_url
     engine = create_engine(DB_URL)
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
