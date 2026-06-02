@@ -27,7 +27,8 @@ def test_get_session_returns_a_session_object():
     assert type(session.__next__()) is Session
 
 def test_create_default_admin_creates_a_default_admin(session: Session):
-    admin_username = os.getenv("ADMIN_USERNAME")
+    settings = Settings()
+    admin_username = settings.admin_username
     assert admin_username != None
     create_admin(session)
     user = read_user(session, username=admin_username)
@@ -49,7 +50,6 @@ def test_initialize_database_skips_initialization_when_db_exists(monkeypatch):
 
 def test_fastapi_lifespan_initializes_db(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
-    settings = Settings()
     with TestClient(app) as client:
         assert os.path.exists("test.db")
     os.remove("test.db")
