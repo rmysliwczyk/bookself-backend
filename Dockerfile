@@ -2,7 +2,8 @@ FROM python:3.13-slim-trixie
 
 WORKDIR /
 
-#COPY ./alembic.ini /
+COPY ./alembic.ini /
+COPY ./alembic /alembic
 COPY ./app /app
 COPY ./.env /.env
 COPY ./requirements.txt /requirements.txt
