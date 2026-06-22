@@ -6,13 +6,19 @@ pipeline {
             steps {
                 script {
                     withCredentials([
-                        string(credentialsId: 'ALGORITHM', variable: 'ALGORITHM'),
-                        string(credentialsId: 'ACCESS_TOKEN_EXPIRE', variable: 'ACCESS_TOKEN_EXPIRE')
+                        string(credentialsId: 'BKSLF_ADMIN_USERNAME', variable: 'ADMIN_USERNAME'),
+                        string(credentialsId: 'BKSLF_ADMIN_PASSWORD', variable: 'ADMIN_PASSWORD'),
+                        string(credentialsId: 'BKSLF_ALGORITHM', variable: 'ALGORITHM'),
+                        string(credentialsId: 'BKSLF_DATABASE_URL', variable: 'DATABASE_URL'),
+                        string(credentialsId: 'BKSLF_SECRET_KEY', variable: 'SECRET_KEY')
                     ]) {
                         sh """
                         rm .env || true
-                        echo "SECRET_KEY=${SECRET_KEY}" >> .env
+                        echo "ADMIN_USERNAME=${ADMIN_USERNAME}" >> .env
+                        echo "ADMIN_PASSWORD=${ADMIN_PASSWORD}" >> .env
                         echo "ALGORITHM=${ALGORITHM}" >> .env
+                        echo "DATABASE_URL=${DATABASE_URL}" >> .env
+                        echo "SECRET_KEY=${SECRET_KEY}" >> .env
                         """
                     }
                 }
