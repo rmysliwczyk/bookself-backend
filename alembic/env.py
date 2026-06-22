@@ -5,11 +5,12 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from app.settings import settings
+from app.settings import Settings
 from sqlmodel import SQLModel
 from app.models.book import Book
 from app.models.user import User
 
+settings = Settings()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
