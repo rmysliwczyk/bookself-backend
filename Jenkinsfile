@@ -40,7 +40,7 @@ pipeline {
 
         stage('Run New Container') {
             steps {
-                sh 'docker run -v database:/app/database -d --restart always --name \"bkslf-backend\" -p 8404:8404 \"bkslf-backend\"'
+                sh 'docker run -v bkslf_database:/app/database -d --restart always --name \"bkslf-backend\" -p 8404:8404 \"bkslf-backend\"'
             }
         }
     }
