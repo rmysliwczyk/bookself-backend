@@ -2,6 +2,7 @@ import uuid
 
 from app.db_operations.dependencies import SessionDep
 from app.db_operations.user import create_user, delete_user, read_all_users, read_user, update_user, SelfFollowError, UserNotFound
+from app.models.book import Book, BookPublic
 from app.models.user import USER_ROLE, User, UserCreate, UserPublic, UserPublicWithFollowers, UserUpdate
 from app.util.auth import allowed_roles, jwt_encode, get_current_user
 from app.util.cryptography import verify_password
@@ -74,4 +75,10 @@ def delete(session: SessionDep, user_id: uuid.UUID, current_user: Annotated[User
     delete_user(session, id=user_id)
     return Response(status_code=200, content="OK")
 
-
+@router.get("/{user_id}/books", response_model=list[BookPublic], dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER]))])
+def read_books(session: SessionDep, user_id: uuid.UUID, current_user: Annotated[User, Depends(get_current_user)]) -> list[Book]:
+    user = read_user(session, id=user_id)
+    books = user.books
+    if user_id != current_user.id and current_user.role != USER_ROLE.ADMIN:
+        books = [book for book in user.books if book.visibility_to_others == True]
+    return books

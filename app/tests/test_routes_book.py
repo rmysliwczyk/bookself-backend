@@ -1,5 +1,6 @@
+import base64
 import pytest
-import random
+import pathlib
 
 from app.db_operations.dependencies import get_session
 from app.db_operations.book import BookNotFound, create_book, read_book
@@ -7,15 +8,12 @@ from app.db_operations.user import create_user, read_user, UserNotFound
 from app.main import app
 from app.models.book import *
 from app.models.user import *
+from app.tests.helper_functions import get_random_string
 from fastapi.testclient import TestClient
 from sqlmodel import create_engine, Session, StaticPool, SQLModel
 
 existing_user_id = None
 existing_book_id = None
-
-
-def get_random_string(n=10):
-    return "".join([chr(random.randrange(65, 91)) for _ in range(n)])
 
 
 @pytest.fixture(name="session", scope="module")
@@ -38,9 +36,46 @@ def client_fixture(session: Session):
     yield client
     app.dependency_overrides.clear()
 
+@pytest.fixture(name="token", scope="module")
+def token_fixture(session: Session, client: TestClient):
+    try:
+        read_user(session, username="fixture-user")
+    except UserNotFound: #pragma: no cover
+        create_user(
+            session,
+            UserCreate(
+                username="fixture-user", password="password", role=USER_ROLE.ADMIN
+            ),
+        )
+
+    post_response = client.post(
+        "/users/login", data={"username": "fixture-user", "password": "password"}
+    )
+    return post_response.json()["access_token"]
 
 @pytest.fixture(name="regular_token", scope="module")
 def regular_token_fixture(session: Session, client: TestClient):
+    try:
+        read_user(session, username="fixture-regular-user")
+    except UserNotFound: #pragma: no cover
+        create_user(
+            session,
+            UserCreate(
+                username="fixture-regular-user",
+                password="password",
+                role=USER_ROLE.REGULAR_USER,
+            ),
+        )
+
+    post_response = client.post(
+        "/users/login",
+        data={"username": "fixture-regular-user", "password": "password"},
+    )
+    return post_response.json()["access_token"]
+
+
+@pytest.fixture(name="regular_user", scope="module")
+def regular_user_data_fixture(session: Session, client: TestClient) -> UserPublic:
     try:
         read_user(session, username="fixture-regular-user")
     except UserNotFound:
@@ -57,7 +92,23 @@ def regular_token_fixture(session: Session, client: TestClient):
         "/users/login",
         data={"username": "fixture-regular-user", "password": "password"},
     )
-    return post_response.json()["access_token"]
+
+    data = post_response.json()["user"]
+    del data["hashed_password"]
+    return UserPublic.model_validate(data)
+
+
+def test_create_users_successfully_adds_valid_user(client: TestClient, token: str):
+    global existing_user_id
+    post_response = client.post(
+        "/users",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"username": "test-1", "password": "pass-1", "role": "ADMIN"},
+    )
+    assert post_response.status_code == 200
+    assert post_response.json()["username"] == "test-1"
+    assert post_response.json()["role"] == "ADMIN"
+    existing_user_id = post_response.json()["id"]
 
 
 def test_create_books_returns_401_when_no_valid_auth_token_included(
@@ -111,6 +162,32 @@ def test_create_books_successfully_adds_valid_book(
     existing_user_id = user.id
     existing_book_id = post_response.json()["id"]
 
+def test_create_books_successfully_adds_valid_book_with_cover_image(
+    client: TestClient, regular_user, regular_token
+):
+    #TODO - Finish
+    cover_image = pathlib.Path.read_bytes(pathlib.Path("app/tests/test_cover_image.jpg"))
+    with open("app/tests/test_cover_image.jpg", "r+b") as file:
+        cover_image = file.read()
+        print(base64.standard_b64encode(cover_image))
+        post_response = client.post(
+            "/books",
+            json={
+                "title": "book1",
+                "rating": 5,
+                "visibility_to_others": True,
+                "user_id": str(regular_user.id),
+                "isbn": "1111111111",
+                "cover_image": base64.standard_b64encode(cover_image).decode()
+            },
+            headers={"Authorization": f"Bearer {regular_token}"},
+        )
+    assert post_response.status_code == 200
+    assert post_response.json()["title"] == "book1"
+    assert post_response.json()["rating"] == 5
+    assert post_response.json()["user_id"] == str(regular_user.id)
+    assert base64.standard_b64decode(post_response.json()["cover_image"]) == cover_image
+
 
 def test_create_books_returns_401_when_trying_to_add_book_to_other_user(
     session: Session, client: TestClient, regular_token: str
@@ -139,93 +216,6 @@ def test_create_books_returns_401_when_trying_to_add_book_to_other_user(
 
     assert post_response.status_code == 401
     assert "Not authorized" in post_response.json()["detail"]
-
-
-def test_read_books_user_id_returns_401_when_no_valid_auth_token_included(
-    client: TestClient,
-):
-    get_response = client.get(f"/books/{existing_user_id}")
-    assert get_response.status_code == 401
-
-
-def test_read_books_user_id_successfully_reads_all_books_for_a_user(client: TestClient):
-    global existing_user_id
-    post_response = client.post(
-        "/users/login", data={"username": "test", "password": "test"}
-    )
-    token = post_response.json()["access_token"]
-
-    client.post(
-        "/books",
-        json={
-            "title": "book2",
-            "rating": 5,
-            "visibility_to_others": True,
-            "user_id": str(existing_user_id),
-            "isbn": "1111111111",
-        },
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    get_response = client.get(
-        f"/books/{existing_user_id}", headers={"Authorization": f"Bearer {token}"}
-    )
-    print(get_response.json())
-    assert get_response.status_code == 200
-    assert get_response.json()[0]["title"] == "book1"
-    assert get_response.json()[1]["title"] == "book2"
-
-
-def test_read_books_user_id_requested_by_regular_user_for_other_user_lists_only_books_with_visibility_to_others_true(
-    session: Session, client: TestClient, regular_token: str
-):
-    random_username = get_random_string(100)
-    other_user = create_user(
-        session,
-        user=UserCreate(
-            username=random_username,
-            password="password",
-            role=USER_ROLE.REGULAR_USER,
-        ),
-    )
-    post_response = client.post(
-        "/users/login", data={"username": random_username, "password": "password"}
-    )
-    assert post_response.status_code == 200
-    token = post_response.json()["access_token"]
-
-    post_response = client.post(
-        "/books",
-        json={
-            "title": "a",
-            "visibility_to_others": "true",
-            "rating": "1",
-            "user_id": str(other_user.id),
-            "isbn": "1111111111",
-        },
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert post_response.status_code == 200
-
-    post_response = client.post(
-        "/books",
-        json={
-            "title": "b",
-            "visibility_to_others": "false",
-            "rating": "1",
-            "user_id": str(other_user.id),
-            "isbn": "1111111111",
-        },
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert post_response.status_code == 200
-
-    get_response = client.get(
-        f"/books/{other_user.id}", headers={"Authorization": f"Bearer {regular_token}"}
-    )
-    assert get_response.status_code == 200
-    assert len(get_response.json()) == 1
-    assert get_response.json()[0]["title"] == "a"
 
 
 def test_read_books_returns_401_when_no_valid_auth_token_included(

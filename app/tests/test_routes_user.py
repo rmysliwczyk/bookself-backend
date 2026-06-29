@@ -6,6 +6,7 @@ from app.db_operations.user import create_user, delete_user, read_user, UserNotF
 from app.main import app
 from app.models.book import *
 from app.models.user import *
+from app.tests.helper_functions import get_random_string
 from fastapi.testclient import TestClient
 from sqlmodel import create_engine, Session, StaticPool, SQLModel
 
@@ -41,7 +42,7 @@ def client_fixture(session: Session):
 def token_fixture(session: Session, client: TestClient):
     try:
         read_user(session, username="fixture-user")
-    except UserNotFound:
+    except UserNotFound: #pragma: no cover
         create_user(
             session,
             UserCreate(
@@ -54,11 +55,33 @@ def token_fixture(session: Session, client: TestClient):
     )
     return post_response.json()["access_token"]
 
+
 @pytest.fixture(name="regular_token", scope="module")
 def regular_token_fixture(session: Session, client: TestClient):
     try:
         read_user(session, username="fixture-regular-user")
-    except UserNotFound:
+    except UserNotFound: #pragma: no cover
+        create_user(
+            session,
+            UserCreate(
+                username="fixture-regular-user",
+                password="password",
+                role=USER_ROLE.REGULAR_USER,
+            ),
+        )
+
+    post_response = client.post(
+        "/users/login",
+        data={"username": "fixture-regular-user", "password": "password"},
+    )
+    return post_response.json()["access_token"]
+
+
+@pytest.fixture(name="regular_user", scope="module")
+def regular_user_data_fixture(session: Session, client: TestClient) -> UserPublic:
+    try:
+        read_user(session, username="fixture-regular-user")
+    except UserNotFound: #pragma: no cover
         create_user(
             session,
             UserCreate(
@@ -69,7 +92,11 @@ def regular_token_fixture(session: Session, client: TestClient):
     post_response = client.post(
         "/users/login", data={"username": "fixture-regular-user", "password": "password"}
     )
-    return post_response.json()["access_token"]
+
+    data = post_response.json()["user"]
+    del data["hashed_password"]
+    return UserPublic.model_validate(data)
+
 
 def test_create_users_successfully_adds_valid_user(client: TestClient, token: str):
     global existing_user_id
@@ -154,7 +181,9 @@ def test_update_users_user_id_successfully_updates_an_existing_user_to_add_follo
 def test_update_users_user_id_returns_400_when_user_tries_to_self_follow(
     client: TestClient, regular_token: str
 ):
-    get_response = client.get("/users/me", headers={"Authorization": f"Bearer {regular_token}"})
+    get_response = client.get(
+        "/users/me", headers={"Authorization": f"Bearer {regular_token}"}
+    )
     assert get_response.status_code == 200
     user_id = get_response.json()["id"]
 
@@ -165,6 +194,7 @@ def test_update_users_user_id_returns_400_when_user_tries_to_self_follow(
     )
     assert patch_response.status_code == 400
     assert "User cannot self-follow." in patch_response.json()["detail"]
+
 
 def test_update_users_user_id_returns_404_if_user_doesnt_exist(
     client: TestClient, token: str
@@ -232,9 +262,7 @@ def test_read_user_user_id_successfully_returns_user_with_book_information_inclu
             "user_id": str(existing_user_id),
             "isbn": "1111111111",
         },
-        headers={
-            "Authorization": f"Bearer {token}"
-        }
+        headers={"Authorization": f"Bearer {token}"},
     )
 
     get_response = client.get(
@@ -245,10 +273,12 @@ def test_read_user_user_id_successfully_returns_user_with_book_information_inclu
 
 
 def test_delete_user_user_id_successfully_deletes_an_existing_user(
-        session: Session, client: TestClient, token: str
+    session: Session, client: TestClient, token: str
 ):
     global existing_user_id
-    delete_response = client.delete(f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"})
+    delete_response = client.delete(
+        f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"}
+    )
     assert delete_response.status_code == 200
     with pytest.raises(UserNotFound):
         read_user(session, id=uuid.UUID(existing_user_id))
@@ -348,11 +378,12 @@ def test_update_user_returns_401_when_regular_user_tries_updating_other_user(
     )
 
     assert patch_response.status_code == 401
-    assert (
-        "Not authorized" in patch_response.json()["detail"]
-    )
+    assert "Not authorized" in patch_response.json()["detail"]
 
-def test_delete_user_id_returns_401_if_called_by_other_regular_user(client: TestClient, token: str, regular_token: str):
+
+def test_delete_user_id_returns_401_if_called_by_other_regular_user(
+    client: TestClient, token: str, regular_token: str
+):
     random_username = get_random_username(100)
     post_response = client.post(
         "/users",
@@ -362,8 +393,111 @@ def test_delete_user_id_returns_401_if_called_by_other_regular_user(client: Test
 
     assert post_response.status_code == 200
 
-    delete_response = client.delete(f"/users/{post_response.json()['id']}", headers={"Authorization": f"Bearer {regular_token}"})
+    delete_response = client.delete(
+        f"/users/{post_response.json()['id']}",
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
 
     assert delete_response.status_code == 401
 
 
+def test_read_users_user_id_books_returns_401_when_no_valid_auth_token_included(
+    client: TestClient, regular_user: UserPublic
+):
+    get_response = client.get(f"/users/{regular_user.id}/books")
+    assert get_response.status_code == 401
+
+
+def test_read_users_user_id_books_successfully_reads_all_books_for_a_user(
+        client: TestClient,
+        regular_user: UserPublic,
+        regular_token: str
+    ):
+
+    post_response = client.post(
+        "/books",
+        json={
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111",
+        },
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    book1_id = post_response.json()["id"]
+
+    post_response = client.post(
+        "/books",
+        json={
+            "title": "book2",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111",
+        },
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    book2_id = post_response.json()["id"]
+
+    get_response = client.get(
+        f"/users/{regular_user.id}/books", headers={"Authorization": f"Bearer {regular_token}"}
+    )
+
+    client.delete(f"/books/{book1_id}")
+    client.delete(f"/books/{book2_id}")
+
+    assert get_response.status_code == 200
+    assert get_response.json()[0]["title"] == "book1"
+    assert get_response.json()[1]["title"] == "book2"
+
+def test_read_books_user_id_requested_by_regular_user_for_other_user_lists_only_books_with_visibility_to_others_true(
+    session: Session, client: TestClient, regular_token: str
+):
+    random_username = get_random_string(100)
+    other_user = create_user(
+        session,
+        user=UserCreate(
+            username=random_username,
+            password="password",
+            role=USER_ROLE.REGULAR_USER,
+        ),
+    )
+    post_response = client.post(
+        "/users/login", data={"username": random_username, "password": "password"}
+    )
+    assert post_response.status_code == 200
+    token = post_response.json()["access_token"]
+
+    post_response = client.post(
+        "/books",
+        json={
+            "title": "a",
+            "visibility_to_others": "true",
+            "rating": "1",
+            "user_id": str(other_user.id),
+            "isbn": "1111111111",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert post_response.status_code == 200
+
+    post_response = client.post(
+        "/books",
+        json={
+            "title": "b",
+            "visibility_to_others": "false",
+            "rating": "1",
+            "user_id": str(other_user.id),
+            "isbn": "1111111111",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert post_response.status_code == 200
+
+    get_response = client.get(
+        f"/users/{other_user.id}/books", headers={"Authorization": f"Bearer {regular_token}"}
+    )
+    assert get_response.status_code == 200
+    assert len(get_response.json()) == 1
+    assert get_response.json()[0]["title"] == "a"
