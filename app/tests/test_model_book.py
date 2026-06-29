@@ -94,7 +94,6 @@ def test_book_create_model_validation_successful_with_correct_required_and_optio
         visibility_to_others=True,
         user_id=fake_user_id,
         review="that was a good book",
-        cover_photo_url="http://example.com/cover.jpg",  # type: ignore
         isbn="9781566199094",  # type: ignore
     )
     assert book_creation_data.title == "book_title"
@@ -102,7 +101,6 @@ def test_book_create_model_validation_successful_with_correct_required_and_optio
     assert book_creation_data.visibility_to_others == True
     assert book_creation_data.user_id == fake_user_id
     assert book_creation_data.review == "that was a good book"
-    assert str(book_creation_data.cover_photo_url) == "http://example.com/cover.jpg"
     assert book_creation_data.isbn == "9781566199094"
 
 
@@ -175,16 +173,6 @@ def test_book_create_model_validation_fails_with_review_longer_than_max_length()
         )
     assert f"review\n  String should have at most {MAX_REVIEW_LENGTH}" in str(exc.value)
 
-
-def test_book_create_model_validation_fails_with_incorrect_cover_photo_url():
-    url = "abcd"
-    fake_user_id = uuid.uuid4()
-    with pytest.raises(ValidationError) as exc:
-        BookCreate(title="book_title", rating=10, visibility_to_others=True, user_id=fake_user_id, cover_photo_url=url)  # type: ignore
-    assert "cover_photo_url\n  Input should be a valid URL" in str(exc.value)
-
-
-def test_book_create_model_validation_fails_with_too_long_isbn():
     too_long_isbn = "97815661990941"
     fake_user_id = uuid.uuid4()
     with pytest.raises(ValidationError) as exc:
@@ -262,15 +250,13 @@ def test_book_update_model_validation_successful_with_correct_fields_all_fields_
 
 
 def test_book_update_model_validation_successful_with_correct_fields_partial_fields_from_normally_optional():
-    book_update_data = BookUpdate(review="some updated review", cover_photo_url="http://example.com")  # type: ignore
+    book_update_data = BookUpdate(review="some updated review")
     assert book_update_data.review == "some updated review"
-    assert str(book_update_data.cover_photo_url) == "http://example.com/"
 
 
 def test_book_update_model_validation_successful_with_correct_fields_all_fields_from_normally_optional():
-    book_update_data = BookUpdate(review="some updated review", cover_photo_url="http://example.com", isbn="9781566199094")  # type: ignore
+    book_update_data = BookUpdate(review="some updated review", isbn="9781566199094")  # type: ignore
     assert book_update_data.review == "some updated review"
-    assert str(book_update_data.cover_photo_url) == "http://example.com/"
     assert book_update_data.isbn == "9781566199094"
 
 

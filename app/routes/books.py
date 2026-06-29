@@ -25,14 +25,6 @@ def read_all(session: SessionDep) -> list[Book]:
     books = read_all_books(session)
     return books
 
-@router.get("/{user_id}", response_model=list[BookPublic], dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER]))])
-def read(session: SessionDep, user_id: uuid.UUID, current_user: Annotated[User, Depends(get_current_user)]) -> list[Book]:
-    user = read_user(session, id=user_id)
-    books = user.books
-    if user_id != current_user.id and current_user.role != USER_ROLE.ADMIN:
-        books = [book for book in user.books if book.visibility_to_others == True]
-    return books
-
 @router.patch("/{book_id}", response_model=BookPublic)
 def update(session: SessionDep, book_id: uuid.UUID, data: BookUpdate) -> Book:
     book = update_book(session, data, id=book_id)
