@@ -17,7 +17,9 @@ SECRET_KEY = os.environ["SECRET_KEY"]
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
 
-def jwt_encode(data: dict, current_time: datetime = datetime.now(), exp_delta: timedelta = timedelta(minutes=60)):
+def jwt_encode(data: dict, current_time: datetime | None = None, exp_delta: timedelta = timedelta(minutes=60)):
+    if current_time == None:
+        current_time = datetime.now()
     data.update({"exp": current_time + exp_delta})
     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
 
