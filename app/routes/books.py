@@ -10,6 +10,7 @@ from app.settings import Settings
 from app.util.auth import allowed_roles, get_current_user
 from fastapi import Depends, Response, Form, UploadFile, HTTPException
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse
 from fastapi.routing import APIRouter
 from pydantic import ValidationError
 from typing import Annotated
@@ -21,6 +22,8 @@ def parse_create_book_data(data: str = Form()) -> BookCreate:
     except ValidationError as e:
         raise RequestValidationError(e.errors())
     return return_value
+
+settings = Settings()
 
 router = APIRouter(prefix="/books")
 @router.post("", response_model=BookPublic, dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER]))])
@@ -37,7 +40,6 @@ def create(session: SessionDep, current_user: Annotated[User, Depends(get_curren
         case _:
             raise RequestValidationError("Invalid image format")
 
-    settings = Settings()
     filepath = f"{settings.media_base_url}{cover_picture.filename if cover_picture.filename else 'unkown'}_{str(data.user_id)}{extension}"
     with open(filepath, "wb") as f:
         f.write(cover_picture.file.read())
@@ -66,3 +68,7 @@ def delete(session: SessionDep, book_id: uuid.UUID) -> Response:
         return Response(status_code=200, content="OK")
     except BookNotFound:
         return Response(status_code=404, content="Book not found")
+
+@router.get(f"/{settings.media_base_url}")
+def get_cover_picture(filename: str) -> FileResponse:
+    return FileResponse(path=f"{settings.media_base_url}{filename}", media_type="image/jpeg", filename=filename)
