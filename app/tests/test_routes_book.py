@@ -9,6 +9,7 @@ from app.db_operations.user import create_user, read_user, UserNotFound
 from app.main import app
 from app.models.book import *
 from app.models.user import *
+from app.settings import Settings
 from app.tests.helper_functions import get_random_string
 from fastapi.testclient import TestClient
 from sqlmodel import create_engine, Session, StaticPool, SQLModel
@@ -388,3 +389,29 @@ def test_create_books_raises_validation_error_when_title_is_missing(
     )
     assert post_response.status_code == 422
     assert "title" in post_response.json()["detail"][0]['loc']
+
+def test_cover_picture_can_be_retrieved(
+        client: TestClient, regular_user: User, regular_token: str, test_image_png: bytes
+):
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.png", test_image_png, "image/png")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert post_response.status_code == 200
+    assert post_response.json()["title"] == "book1"
+    assert post_response.json()["rating"] == 5
+    assert post_response.json()["user_id"] == str(regular_user.id)
+
+    settings = Settings()
+    filename = post_response.json()['cover_photo_url'].split("/")[-1]
+    request_url = f"/books/{settings.media_base_url}?filename={filename}"
+    get_response = client.get(request_url)
+    assert get_response.status_code == 200
