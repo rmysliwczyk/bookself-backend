@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     model_config = {"env_file": ".env"}
-    api_url: str = Field(default="https://mysliwczykrafal.pl/")
+    api_url: str = Field(default="https://bkslf-api.mysliwczykrafal.pl/")
     database_url: str = Field(default="sqlite:///test.db")
     admin_username: str = Field(default="ADMIN")
     admin_password: str = Field(default="ADMIN")
