@@ -5,6 +5,7 @@ WORKDIR /
 COPY ./alembic.ini /
 COPY ./alembic /alembic
 COPY ./app /app
+COPY ./cover_images /cover_images
 COPY ./.env /.env
 COPY ./requirements.txt /requirements.txt
 copy ./start_script.sh /

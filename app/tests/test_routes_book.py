@@ -1,4 +1,5 @@
 import base64
+import json
 import pytest
 import pathlib
 
@@ -97,6 +98,23 @@ def regular_user_data_fixture(session: Session, client: TestClient) -> UserPubli
     del data["hashed_password"]
     return UserPublic.model_validate(data)
 
+@pytest.fixture(name="test_image", scope="module")
+def test_image_fixture() -> bytes:
+    script_dir_filepath = pathlib.Path(__file__).parent
+    test_image = None
+    with open(script_dir_filepath/"test_cover_image.jpg", "rb") as f:
+        test_image = f.read()
+
+    return test_image
+
+@pytest.fixture(name="test_image_png", scope="module")
+def test_image_fixture_png() -> bytes:
+    script_dir_filepath = pathlib.Path(__file__).parent
+    test_image = None
+    with open(script_dir_filepath/"test_cover_image.png", "rb") as f:
+        test_image = f.read()
+
+    return test_image
 
 def test_create_users_successfully_adds_valid_user(client: TestClient, token: str):
     global existing_user_id
@@ -131,66 +149,28 @@ def test_create_books_returns_401_when_no_valid_auth_token_included(
 
 
 def test_create_books_successfully_adds_valid_book(
-    session: Session, client: TestClient
+        client: TestClient, regular_user: User, regular_token: str, test_image: bytes
 ):
-    global existing_user_id
-    global existing_book_id
-    user = create_user(
-        session, UserCreate(username="test", password="test", role=USER_ROLE.ADMIN)
-    )
-    post_response = client.post(
-        "/users/login", data={"username": "test-auth", "password": "test"}
-    )
-    assert post_response.status_code == 200
-    token = post_response.json()["access_token"]
-
-    post_response = client.post(
-        "/books",
-        json={
+    data = json.dumps({
             "title": "book1",
             "rating": 5,
             "visibility_to_others": True,
-            "user_id": str(user.id),
-            "isbn": "1111111111",
-        },
-        headers={"Authorization": f"Bearer {token}"},
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {regular_token}"},
     )
-    assert post_response.status_code == 200
-    assert post_response.json()["title"] == "book1"
-    assert post_response.json()["rating"] == 5
-    assert post_response.json()["user_id"] == str(user.id)
-    existing_user_id = user.id
-    existing_book_id = post_response.json()["id"]
-
-def test_create_books_successfully_adds_valid_book_with_cover_image(
-    client: TestClient, regular_user, regular_token
-):
-    #TODO - Finish
-    cover_image = pathlib.Path.read_bytes(pathlib.Path("app/tests/test_cover_image.jpg"))
-    with open("app/tests/test_cover_image.jpg", "r+b") as file:
-        cover_image = file.read()
-        print(base64.standard_b64encode(cover_image))
-        post_response = client.post(
-            "/books",
-            json={
-                "title": "book1",
-                "rating": 5,
-                "visibility_to_others": True,
-                "user_id": str(regular_user.id),
-                "isbn": "1111111111",
-                "cover_image": base64.standard_b64encode(cover_image).decode()
-            },
-            headers={"Authorization": f"Bearer {regular_token}"},
-        )
     assert post_response.status_code == 200
     assert post_response.json()["title"] == "book1"
     assert post_response.json()["rating"] == 5
     assert post_response.json()["user_id"] == str(regular_user.id)
-    assert base64.standard_b64decode(post_response.json()["cover_image"]) == cover_image
 
 
 def test_create_books_returns_401_when_trying_to_add_book_to_other_user(
-    session: Session, client: TestClient, regular_token: str
+        session: Session, client: TestClient, regular_token: str, test_image: bytes
 ):
     random_username = get_random_string(100)
     other_user = create_user(
@@ -202,15 +182,18 @@ def test_create_books_returns_401_when_trying_to_add_book_to_other_user(
         ),
     )
 
-    post_response = client.post(
-        "/books",
-        json={
+    data = json.dumps({
             "title": "a",
             "visibility_to_others": "true",
             "rating": "1",
             "user_id": str(other_user.id),
             "isbn": "1111111111",
-        },
+        })
+
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
         headers={"Authorization": f"Bearer {regular_token}"},
     )
 
@@ -225,11 +208,7 @@ def test_read_books_returns_401_when_no_valid_auth_token_included(
     assert res.status_code == 401
 
 
-def test_read_books_successfully_reads_all_books(session: Session, client: TestClient):
-    post_response = client.post(
-        "/users/login", data={"username": "test", "password": "test"}
-    )
-    token = post_response.json()["access_token"]
+def test_read_books_successfully_reads_all_books(session: Session, client: TestClient, token: str):
     # Adding another user and book to have at least two
     new_user = create_user(
         session,
@@ -267,43 +246,85 @@ def test_read_books_successfully_reads_all_books(session: Session, client: TestC
     )
     assert len(books) == 2
 
+    res = client.delete(f"/users/{new_user.id}", headers={"Authorization" : f"Bearer {token}"})
+    assert res.status_code == 200
+
 
 def test_update_books_book_id_successfully_updates_an_existing_book(
-    session: Session, client: TestClient
+        session: Session, client: TestClient, regular_user: User, regular_token: str, test_image: bytes
 ):
-    global existing_book_id
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert post_response.status_code == 200
+
     patch_response = client.patch(
-        f"/books/{existing_book_id}", json={"title": "book-1", "author": "john doe"}
+            f"/books/{post_response.json()['id']}", json={"title": "book-1", "author": "john doe"}, headers={"Authorization": f"Bearer {regular_token}"}
     )
     assert patch_response.status_code == 200
     assert patch_response.json()["title"] == "book-1"
     assert patch_response.json()["author"] == "john doe"
 
 
-def test_update_books_book_id_successfully_updates_an_existing_book_with_user_id(
-    session: Session, client: TestClient
+def test_update_books_book_id_fails_updating_an_existing_book_with_other_user_id(
+        session: Session, client: TestClient, regular_user: User, regular_token: str, test_image: bytes
 ):
-    global existing_book_id
-    new_user = create_user(
-        session,
-        UserCreate(username="test3", password="test3", role=USER_ROLE.REGULAR_USER),
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {regular_token}"},
     )
+    assert post_response.status_code == 200
+
+    random_uuid = str(uuid.uuid4())
     patch_response = client.patch(
-        f"/books/{existing_book_id}", json={"user_id": str(new_user.id)}
+            f"/books/{post_response.json()['id']}", json={"user_id": str(random_uuid)}, headers={"Authorization": f"Bearer {regular_token}"}
     )
-    assert patch_response.status_code == 200
-    assert patch_response.json()["user_id"] == str(new_user.id)
+    assert patch_response.status_code == 400
+    assert "Cannot assign books to other users" in patch_response.json()["detail"]
 
 
 def test_delete_books_book_id_successfully_deletes_an_existing_book(
-    session: Session, client: TestClient
+        session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
 ):
-    global existing_book_id
-    delete_response = client.delete(f"/books/{existing_book_id}")
+    
+    data = json.dumps({
+            "title": "book-to-be-deleted",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert post_response.status_code == 200
+
+    delete_response = client.delete(f"/books/{post_response.json()['id']}")
     assert delete_response.status_code == 200
     assert delete_response.text == "OK"
     with pytest.raises(BookNotFound):
-        read_book(session, id=uuid.UUID(existing_book_id))
+        read_book(session, id=uuid.UUID(post_response.json()['id']))
 
 
 def test_delete_books_book_id_raises_exception_for_non_existing_book(
@@ -311,3 +332,59 @@ def test_delete_books_book_id_raises_exception_for_non_existing_book(
 ):
     delete_response = client.delete(f"/books/{uuid.uuid4()}")
     assert delete_response.status_code == 404
+
+def test_create_book_raises_validation_error_for_incorrect_image_format(
+        client: TestClient, regular_user: User, regular_token: str, test_image: bytes
+):
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.img", test_image, "image/img")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert post_response.status_code == 422
+    assert "Invalid image format" in post_response.json()["detail"]
+
+def test_create_books_successfully_adds_valid_book_when_using_png(
+        client: TestClient, regular_user: User, regular_token: str, test_image_png: bytes
+):
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.png", test_image_png, "image/png")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert post_response.status_code == 200
+    assert post_response.json()["title"] == "book1"
+    assert post_response.json()["rating"] == 5
+    assert post_response.json()["user_id"] == str(regular_user.id)
+
+def test_create_books_raises_validation_error_when_title_is_missing(
+        client: TestClient, regular_user: User, regular_token: str, test_image: bytes
+):
+    data = json.dumps({
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert post_response.status_code == 422
+    assert "title" in post_response.json()["detail"][0]['loc']
