@@ -43,7 +43,7 @@ def create(session: SessionDep, current_user: Annotated[User, Depends(get_curren
     filepath = f"{settings.media_base_url}{cover_picture.filename if cover_picture.filename else 'unkown'}_{str(data.user_id)}{extension}"
     with open(filepath, "wb") as f:
         f.write(cover_picture.file.read())
-    file_url = f"{settings.api_url}{filepath}"
+    file_url = f"{settings.api_url}books/{filepath}"
     new_book = create_book(session, data, cover_photo_url=file_url)
     return new_book
 
