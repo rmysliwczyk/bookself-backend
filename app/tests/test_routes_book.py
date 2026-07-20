@@ -412,6 +412,6 @@ def test_cover_picture_can_be_retrieved(
 
     settings = Settings()
     filename = post_response.json()['cover_photo_url'].split("/")[-1]
-    request_url = f"/books/{settings.media_base_url}?filename={filename}"
+    request_url = f"/books/{settings.media_base_url}{filename}"
     get_response = client.get(request_url)
     assert get_response.status_code == 200
