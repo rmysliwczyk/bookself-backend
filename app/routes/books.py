@@ -40,7 +40,7 @@ def create(session: SessionDep, current_user: Annotated[User, Depends(get_curren
         case _:
             raise RequestValidationError("Invalid image format")
 
-    filepath = f"{settings.media_base_url}{cover_picture.filename if cover_picture.filename else 'unkown'}_{str(data.user_id)}{extension}"
+    filepath = f"{settings.media_base_url}{cover_picture.filename.split('.')[0] if cover_picture.filename else 'unkown'}_{str(data.user_id)}{extension}"
     with open(filepath, "wb") as f:
         f.write(cover_picture.file.read())
     file_url = f"{settings.api_url}books/{filepath}"
@@ -69,6 +69,6 @@ def delete(session: SessionDep, book_id: uuid.UUID) -> Response:
     except BookNotFound:
         return Response(status_code=404, content="Book not found")
 
-@router.get(f"/{settings.media_base_url}")
+@router.get("/cover_images/{filename}")
 def get_cover_picture(filename: str) -> FileResponse:
     return FileResponse(path=f"{settings.media_base_url}{filename}", media_type="image/jpeg", filename=filename)
