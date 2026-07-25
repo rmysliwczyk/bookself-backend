@@ -47,8 +47,8 @@ def read_user(
 
     return user
 
-def read_all_users(session: Session) -> list[User]:
-    return list(session.exec(select(User)).all())
+def read_all_users(session: Session, usernameQuery: str = "") -> list[User]:
+    return list(session.exec(select(User).where(User.username.ilike(usernameQuery + '%'))).all()) # type: ignore I'm using SQLAlchemy
 
 def update_user(
     session: Session,

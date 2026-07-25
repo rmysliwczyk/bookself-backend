@@ -37,8 +37,8 @@ def create(session: SessionDep, data: UserCreate) -> User:
     return new_user
 
 @router.get("", response_model=list[UserPublicWithFollowers], dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN]))])
-def read_all(session: SessionDep) -> list[User]:
-    users = read_all_users(session)
+def read_all(session: SessionDep, username: str = "") -> list[User]:
+    users = read_all_users(session, usernameQuery=username)
     return users
 
 @router.get("/me")
