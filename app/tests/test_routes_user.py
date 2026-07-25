@@ -135,6 +135,93 @@ def test_read_all_users_successfully_returns_all_users(
     assert get_response.json()[1]["username"] == "test-1"
     assert get_response.json()[2]["username"] == "test-2"
 
+def test_read_all_users_successfully_returns_all_users_with_query(
+    session: Session, client: TestClient, token: str
+):
+    created_users_ids = []
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="b", password="b", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="a", password="a", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="ab", password="ab", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="abc", password="abc", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    get_response = client.get("/users?username=a", headers={"Authorization": f"Bearer {token}"})
+
+    assert get_response.status_code == 200
+    assert len(get_response.json()) == 3
+    assert any([x["username"] == "a" for x in get_response.json()])
+    assert any([x["username"] == "ab" for x in get_response.json()])
+    assert any([x["username"] == "abc" for x in get_response.json()])
+
+    for created_user_id in created_users_ids:
+        delete_user(session, id=created_user_id)
+
+def test_read_all_users_successfully_returns_all_users_with_query_case_insensitive(
+    session: Session, client: TestClient, token: str
+):
+    created_users_ids = []
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="b", password="b", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="A", password="a", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="ab", password="ab", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="Abc", password="abc", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    get_response = client.get("/users?username=a", headers={"Authorization": f"Bearer {token}"})
+
+    assert get_response.status_code == 200
+    assert len(get_response.json()) == 3
+    assert any([x["username"] == "A" for x in get_response.json()])
+    assert any([x["username"] == "ab" for x in get_response.json()])
+    assert any([x["username"] == "Abc" for x in get_response.json()])
+
+    for created_user_id in created_users_ids:
+        delete_user(session, id=created_user_id)
 
 def test_read_user_user_id_successfully_reads_valid_user(
     client: TestClient, token: str
