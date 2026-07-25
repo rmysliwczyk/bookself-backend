@@ -36,7 +36,7 @@ def create(session: SessionDep, data: UserCreate) -> User:
         raise HTTPException(status_code=400, detail="User with that username already exists")
     return new_user
 
-@router.get("", response_model=list[UserPublicWithFollowers], dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN]))])
+@router.get("", response_model=list[UserPublicWithFollowers], dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER]))])
 def read_all(session: SessionDep, username: str = "") -> list[User]:
     users = read_all_users(session, usernameQuery=username)
     return users
