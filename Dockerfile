@@ -11,6 +11,7 @@ COPY ./requirements.txt /requirements.txt
 copy ./start_script.sh /
 
 VOLUME /app/database
+VOLUME /cover_images
 
 RUN pip install -r requirements.txt
 ENTRYPOINT ["./start_script.sh"]
