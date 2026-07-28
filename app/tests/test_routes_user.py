@@ -416,7 +416,7 @@ def test_read_user_user_id_successfully_returns_user_with_book_information_inclu
     assert get_response.status_code == 200
     assert get_response.json()["books"][0]["title"] == "book1"
     
-    client.delete(f"/books/{post_response.json()['id']}")
+    client.delete(f"/books/{post_response.json()['id']}", headers={"Authorization" : f"Bearer {regular_token}"})
 
 
 def test_delete_user_user_id_successfully_deletes_an_existing_user(

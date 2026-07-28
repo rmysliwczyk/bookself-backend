@@ -4,8 +4,8 @@ import pytest
 import pathlib
 
 from app.db_operations.dependencies import get_session
-from app.db_operations.book import BookNotFound, create_book, read_book
-from app.db_operations.user import create_user, read_user, UserNotFound
+from app.db_operations.book import BookNotFound, create_book, delete_book, read_book
+from app.db_operations.user import create_user, delete_user, read_user, UserNotFound
 from app.main import app
 from app.models.book import *
 from app.models.user import *
@@ -321,7 +321,7 @@ def test_delete_books_book_id_successfully_deletes_an_existing_book(
     )
     assert post_response.status_code == 200
 
-    delete_response = client.delete(f"/books/{post_response.json()['id']}")
+    delete_response = client.delete(f"/books/{post_response.json()['id']}", headers={"Authorization" : f"Bearer {regular_token}"})
     assert delete_response.status_code == 200
     assert delete_response.text == "OK"
     with pytest.raises(BookNotFound):
@@ -329,10 +329,45 @@ def test_delete_books_book_id_successfully_deletes_an_existing_book(
 
 
 def test_delete_books_book_id_raises_exception_for_non_existing_book(
-    client: TestClient,
+        client: TestClient, regular_token: str
 ):
-    delete_response = client.delete(f"/books/{uuid.uuid4()}")
+    delete_response = client.delete(f"/books/{uuid.uuid4()}", headers={"Authorization" : f"Bearer {regular_token}"})
     assert delete_response.status_code == 404
+
+
+def test_delete_books_book_id_raises_exception_for_other_user_book(
+        session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
+):
+    # TODO - Zrobić zielone
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert post_response.status_code == 200
+    book_id = post_response.json()['id']
+
+    # Creating and logging as other user
+    create_user(session, UserCreate(username='a', password='a', role=USER_ROLE.REGULAR_USER))
+    post_response = client.post(
+        "/users/login", data={"username": "a", "password": "a"}
+    )
+    user_id = post_response.json()['user']['id']
+
+    delete_response = client.delete(f"/books/{book_id}", headers={"Authorization": f"Bearer {post_response.json()['access_token']}"})
+    assert delete_response.status_code == 401
+    assert "Can't delete other user's books" in delete_response.json()["detail"]
+
+    delete_book(session, id=uuid.UUID(book_id))
+    delete_user(session, id=uuid.UUID(user_id))
+
 
 def test_create_book_raises_validation_error_for_incorrect_image_format(
         client: TestClient, regular_user: User, regular_token: str, test_image: bytes
