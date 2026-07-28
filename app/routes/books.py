@@ -71,11 +71,8 @@ def delete(session: SessionDep, current_user: Annotated[User,Depends(get_current
         if book.user_id != current_user.id:
             raise HTTPException(status_code=401, detail="Can't delete other user's books")
 
-    try:
-        delete_book(session, id=book_id)
-        return Response(status_code=200, content="OK")
-    except BookNotFound:
-        return Response(status_code=404, content="Book not found")
+    delete_book(session, id=book_id)
+    return Response(status_code=200, content="OK")
 
 @router.get("/cover_images/{filename}")
 def get_cover_picture(filename: str) -> FileResponse:
