@@ -2,7 +2,7 @@ import json
 import uuid
 
 from app.db_operations.dependencies import SessionDep
-from app.db_operations.book import BookNotFound, create_book, delete_book, read_all_books, update_book
+from app.db_operations.book import BookNotFound, create_book, delete_book, read_all_books, read_book, update_book
 from app.db_operations.user import read_user
 from app.models.book import Book, BookCreate, BookPublic, BookUpdate
 from app.models.user import User, USER_ROLE
@@ -61,8 +61,16 @@ def update(session: SessionDep, current_user: Annotated[User, Depends(get_curren
     book = update_book(session, data, id=book_id)
     return book
 
-@router.delete("/{book_id}")
-def delete(session: SessionDep, book_id: uuid.UUID) -> Response:
+@router.delete("/{book_id}", dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN,USER_ROLE.REGULAR_USER]))])
+def delete(session: SessionDep, current_user: Annotated[User,Depends(get_current_user)], book_id: uuid.UUID) -> Response:
+    if current_user.role != USER_ROLE.ADMIN:
+        try:
+            book = read_book(session, book_id)
+        except BookNotFound:
+            return Response(status_code=404, content="Book not found")
+        if book.user_id != current_user.id:
+            raise HTTPException(status_code=401, detail="Can't delete other user's books")
+
     try:
         delete_book(session, id=book_id)
         return Response(status_code=200, content="OK")
