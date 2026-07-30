@@ -12,8 +12,6 @@ from app.tests.helper_functions import get_random_string
 from fastapi.testclient import TestClient
 from sqlmodel import create_engine, Session, StaticPool, SQLModel
 
-existing_user_id = None
-
 
 def get_random_username(n=10):
     return "".join([chr(random.randrange(65, 91)) for _ in range(n)])
@@ -108,32 +106,72 @@ def test_image_fixture() -> bytes:
 
     return test_image
 
-def test_create_users_successfully_adds_valid_user(client: TestClient, token: str):
-    global existing_user_id
+def test_create_users_successfully_adds_valid_user(session: Session, client: TestClient, token: str):
     post_response = client.post(
         "/users",
         headers={"Authorization": f"Bearer {token}"},
         json={"username": "test-1", "password": "pass-1", "role": "ADMIN"},
     )
+    delete_user(session, id=uuid.UUID(post_response.json()["id"]))
     assert post_response.status_code == 200
     assert post_response.json()["username"] == "test-1"
     assert post_response.json()["role"] == "ADMIN"
-    existing_user_id = post_response.json()["id"]
+
+
+def test_create_users_fails_to_add_admin_user_if_not_authenticated_as_admin(session: Session, client: TestClient, regular_token: str):
+    post_response = client.post(
+        "/users",
+        headers={"Authorization": f"Bearer {regular_token}"},
+        json={"username": "shouldntexist", "password": "pass-1", "role": "ADMIN"},
+    )
+    assert post_response.status_code == 401
+    assert "Only admins can create admin users." in post_response.json()["detail"]
 
 
 def test_read_all_users_successfully_returns_all_users(
     session: Session, client: TestClient, token: str
 ):
-    create_user(
-        session,
-        user=UserCreate(username="test-2", password="pass-2", role=USER_ROLE.ADMIN),
+    created_users_ids = []
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="b", password="b", role=USER_ROLE.REGULAR_USER),
+        ).id
     )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="a", password="a", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="ab", password="ab", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
+    created_users_ids.append(
+        create_user(
+            session,
+            user=UserCreate(username="abc", password="abc", role=USER_ROLE.REGULAR_USER),
+        ).id
+    )
+
     get_response = client.get("/users", headers={"Authorization": f"Bearer {token}"})
+
+    for created_user_id in created_users_ids:
+        delete_user(session, id=created_user_id)
+
     assert get_response.status_code == 200
-    assert len(get_response.json()) == 3
-    assert get_response.json()[0]["username"] == "fixture-user"
-    assert get_response.json()[1]["username"] == "test-1"
-    assert get_response.json()[2]["username"] == "test-2"
+    assert any([x["username"] == "b" for x in get_response.json()])
+    assert any([x["username"] == "a" for x in get_response.json()])
+    assert any([x["username"] == "ab" for x in get_response.json()])
+    assert any([x["username"] == "abc" for x in get_response.json()])
+
 
 def test_read_all_users_successfully_returns_all_users_for_regular_user(
     session: Session, client: TestClient, regular_token: str
@@ -168,16 +206,17 @@ def test_read_all_users_successfully_returns_all_users_for_regular_user(
         ).id
     )
 
-    get_response = client.get("/users?username=a", headers={"Authorization": f"Bearer {regular_token}"})
+    get_response = client.get("/users", headers={"Authorization": f"Bearer {regular_token}"})
+
+    for created_user_id in created_users_ids:
+        delete_user(session, id=created_user_id)
 
     assert get_response.status_code == 200
-    assert len(get_response.json()) == 3
+    assert any([x["username"] == "b" for x in get_response.json()])
     assert any([x["username"] == "a" for x in get_response.json()])
     assert any([x["username"] == "ab" for x in get_response.json()])
     assert any([x["username"] == "abc" for x in get_response.json()])
 
-    for created_user_id in created_users_ids:
-        delete_user(session, id=created_user_id)
 
 def test_read_all_users_successfully_returns_all_users_with_query(
     session: Session, client: TestClient, token: str
@@ -187,41 +226,42 @@ def test_read_all_users_successfully_returns_all_users_with_query(
     created_users_ids.append(
         create_user(
             session,
-            user=UserCreate(username="b", password="b", role=USER_ROLE.REGULAR_USER),
+            user=UserCreate(username="bb", password="b", role=USER_ROLE.REGULAR_USER),
         ).id
     )
 
     created_users_ids.append(
         create_user(
             session,
-            user=UserCreate(username="a", password="a", role=USER_ROLE.REGULAR_USER),
+            user=UserCreate(username="aa", password="a", role=USER_ROLE.REGULAR_USER),
         ).id
     )
 
     created_users_ids.append(
         create_user(
             session,
-            user=UserCreate(username="ab", password="ab", role=USER_ROLE.REGULAR_USER),
+            user=UserCreate(username="aab", password="ab", role=USER_ROLE.REGULAR_USER),
         ).id
     )
 
     created_users_ids.append(
         create_user(
             session,
-            user=UserCreate(username="abc", password="abc", role=USER_ROLE.REGULAR_USER),
+            user=UserCreate(username="aabc", password="abc", role=USER_ROLE.REGULAR_USER),
         ).id
     )
 
     get_response = client.get("/users?username=a", headers={"Authorization": f"Bearer {token}"})
 
-    assert get_response.status_code == 200
-    assert len(get_response.json()) == 3
-    assert any([x["username"] == "a" for x in get_response.json()])
-    assert any([x["username"] == "ab" for x in get_response.json()])
-    assert any([x["username"] == "abc" for x in get_response.json()])
-
     for created_user_id in created_users_ids:
         delete_user(session, id=created_user_id)
+
+    assert get_response.status_code == 200
+    assert all([x["username"] != "bb" for x in get_response.json()])
+    assert any([x["username"] == "aa" for x in get_response.json()])
+    assert any([x["username"] == "aab" for x in get_response.json()])
+    assert any([x["username"] == "aabc" for x in get_response.json()])
+
 
 def test_read_all_users_successfully_returns_all_users_with_query_case_insensitive(
     session: Session, client: TestClient, token: str
@@ -231,53 +271,59 @@ def test_read_all_users_successfully_returns_all_users_with_query_case_insensiti
     created_users_ids.append(
         create_user(
             session,
-            user=UserCreate(username="b", password="b", role=USER_ROLE.REGULAR_USER),
+            user=UserCreate(username="cc", password="b", role=USER_ROLE.REGULAR_USER),
         ).id
     )
 
     created_users_ids.append(
         create_user(
             session,
-            user=UserCreate(username="A", password="a", role=USER_ROLE.REGULAR_USER),
+            user=UserCreate(username="AA", password="a", role=USER_ROLE.REGULAR_USER),
         ).id
     )
 
     created_users_ids.append(
         create_user(
             session,
-            user=UserCreate(username="ab", password="ab", role=USER_ROLE.REGULAR_USER),
+            user=UserCreate(username="aaab", password="ab", role=USER_ROLE.REGULAR_USER),
         ).id
     )
 
     created_users_ids.append(
         create_user(
             session,
-            user=UserCreate(username="Abc", password="abc", role=USER_ROLE.REGULAR_USER),
+            user=UserCreate(username="AAbc", password="abc", role=USER_ROLE.REGULAR_USER),
         ).id
     )
 
     get_response = client.get("/users?username=a", headers={"Authorization": f"Bearer {token}"})
 
-    assert get_response.status_code == 200
-    assert len(get_response.json()) == 3
-    assert any([x["username"] == "A" for x in get_response.json()])
-    assert any([x["username"] == "ab" for x in get_response.json()])
-    assert any([x["username"] == "Abc" for x in get_response.json()])
-
     for created_user_id in created_users_ids:
         delete_user(session, id=created_user_id)
 
+    assert get_response.status_code == 200
+    assert all([x["username"] != "cc" for x in get_response.json()])
+    assert any([x["username"] == "AA" for x in get_response.json()])
+    assert any([x["username"] == "aaab" for x in get_response.json()])
+    assert any([x["username"] == "AAbc" for x in get_response.json()])
+
 def test_read_user_user_id_successfully_reads_valid_user(
-    client: TestClient, token: str
+        session: Session, client: TestClient, token: str
 ):
-    global existing_user_id
+    existing_user_id = create_user(
+        session,
+        user=UserCreate(username="valid_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+        ).id
+
     get_response = client.get(
         f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"}
     )
+
+    delete_user(session, id=existing_user_id)
     assert get_response.status_code == 200
     assert str(get_response.json()["id"]) == str(existing_user_id)
-    assert get_response.json()["username"] == "test-1"
-    assert get_response.json()["role"] == "ADMIN"
+    assert get_response.json()["username"] == "valid_user"
+    assert get_response.json()["role"] == "REGULAR_USER"
 
 
 def test_read_user_user_id_returns_404_if_user_doesnt_exist(
@@ -290,14 +336,20 @@ def test_read_user_user_id_returns_404_if_user_doesnt_exist(
 
 
 def test_update_users_user_id_successfully_updates_an_existing_user(
-    client: TestClient, token: str
+        session: Session, client: TestClient, token: str
 ):
-    global existing_user_id
+    existing_user_id = create_user(
+        session,
+        user=UserCreate(username="existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
+
     patch_response = client.patch(
         f"/users/{existing_user_id}",
         headers={"Authorization": f"Bearer {token}"},
         json={"username": "test-new-1"},
     )
+
+    delete_user(session, id=existing_user_id)
     assert patch_response.status_code == 200
     assert patch_response.json()["id"] == str(existing_user_id)
     assert patch_response.json()["username"] == "test-new-1"
@@ -306,17 +358,25 @@ def test_update_users_user_id_successfully_updates_an_existing_user(
 def test_update_users_user_id_successfully_updates_an_existing_user_to_add_followed_user(
     session: Session, client: TestClient, token: str
 ):
-    global existing_user_id
-    second_existing_user = read_user(session, username="test-2")
+    existing_user_id = create_user(
+        session,
+        user=UserCreate(username="existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
+    second_existing_user_id = create_user(
+        session,
+        user=UserCreate(username="second_existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
     patch_response = client.patch(
         f"/users/{existing_user_id}",
         headers={"Authorization": f"Bearer {token}"},
-        json={"following_ids": [str(second_existing_user.id)]},
+        json={"following_ids": [str(second_existing_user_id)]},
     )
+    delete_user(session, id=existing_user_id)
+    delete_user(session, id=second_existing_user_id)
     assert patch_response.status_code == 200
     assert patch_response.json()["id"] == str(existing_user_id)
     assert len(patch_response.json()["following"]) == 1
-    assert patch_response.json()["following"][0]["username"] == "test-2"
+    assert patch_response.json()["following"][0]["username"] == "second_existing_user"
 
 
 def test_update_users_user_id_returns_400_when_user_tries_to_self_follow(
@@ -349,45 +409,106 @@ def test_update_users_user_id_returns_404_if_user_doesnt_exist(
 
 
 def test_read_user_user_id_successfully_returns_user_with_following(
-    client: TestClient, token: str
+        session: Session, client: TestClient, token: str
 ):
-    global existing_user_id
+    existing_user_id = create_user(
+        session,
+        user=UserCreate(username="existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
+
+    second_existing_user_id = create_user(
+        session,
+        user=UserCreate(username="second_existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
+
+    patch_response = client.patch(
+        f"/users/{existing_user_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"following_ids": [str(second_existing_user_id)]},
+    )
+
+    assert patch_response.status_code == 200
+
     get_response = client.get(
         f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"}
     )
+
+    delete_user(session, id=existing_user_id)
+    delete_user(session, id=second_existing_user_id)
+
     assert get_response.status_code == 200
-    assert get_response.json()["following"][0]["username"] == "test-2"
+    assert get_response.json()["following"][0]["username"] == "second_existing_user"
 
 
 def test_read_user_user_id_successfully_returns_user_with_followers(
     session: Session, client: TestClient, token: str
 ):
-    global existing_user_id
-    second_existing_user = read_user(session, username="test-2")
-    get_response = client.get(
-        f"/users/{str(second_existing_user.id)}",
+    existing_user_id = create_user(
+        session,
+        user=UserCreate(username="existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
+
+    second_existing_user_id = create_user(
+        session,
+        user=UserCreate(username="second_existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
+
+    patch_response = client.patch(
+        f"/users/{existing_user_id}",
         headers={"Authorization": f"Bearer {token}"},
+        json={"following_ids": [str(second_existing_user_id)]},
     )
+
+    assert patch_response.status_code == 200
+
+    get_response = client.get(
+        f"/users/{second_existing_user_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    delete_user(session, id=existing_user_id)
+    delete_user(session, id=second_existing_user_id)
+
     assert get_response.status_code == 200
-    assert get_response.json()["followers"][0]["username"] == "test-new-1"
+    assert get_response.json()["followers"][0]["username"] == "existing_user"
 
 
 def test_update_users_user_id_successfully_removes_all_followed_users(
-    client: TestClient, token: str
+        session: Session, client: TestClient, token: str
 ):
-    global existing_user_id
+    existing_user_id = create_user(
+        session,
+        user=UserCreate(username="existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
+
+    second_existing_user_id = create_user(
+        session,
+        user=UserCreate(username="second_existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
+
+    patch_response = client.patch(
+        f"/users/{existing_user_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"following_ids": [str(second_existing_user_id)]},
+    )
+
+    assert patch_response.status_code == 200
+
     patch_response = client.patch(
         f"/users/{existing_user_id}",
         headers={"Authorization": f"Bearer {token}"},
         json={"following_ids": []},
     )
+
     assert patch_response.status_code == 200
     assert patch_response.json()["id"] == str(existing_user_id)
     assert len(patch_response.json()["following"]) == 0
+
     get_response = client.get(
         f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert len(get_response.json()["following"]) == 0
+    delete_user(session, id=existing_user_id)
+    delete_user(session, id=second_existing_user_id)
 
 
 def test_read_user_user_id_successfully_returns_user_with_book_information_included(
@@ -415,20 +536,22 @@ def test_read_user_user_id_successfully_returns_user_with_book_information_inclu
     )
     assert get_response.status_code == 200
     assert get_response.json()["books"][0]["title"] == "book1"
-    
     client.delete(f"/books/{post_response.json()['id']}", headers={"Authorization" : f"Bearer {regular_token}"})
 
 
 def test_delete_user_user_id_successfully_deletes_an_existing_user(
     session: Session, client: TestClient, token: str
 ):
-    global existing_user_id
+    existing_user_id = create_user(
+        session,
+        user=UserCreate(username="existing_user", password="existing_user", role=USER_ROLE.REGULAR_USER),
+    ).id
     delete_response = client.delete(
         f"/users/{existing_user_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert delete_response.status_code == 200
     with pytest.raises(UserNotFound):
-        read_user(session, id=uuid.UUID(existing_user_id))
+        read_user(session, id=existing_user_id)
 
 
 def test_read_users_me_successfully_returns_information_about_token_owner(
@@ -437,6 +560,17 @@ def test_read_users_me_successfully_returns_information_about_token_owner(
     get_response = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
     assert get_response.status_code == 200
     assert get_response.json()["username"] == "fixture-user"
+
+
+def test_delete_user_user_id_reports_an_error_for_non_existent_user(
+    client: TestClient, token: str
+):
+    delete_response = client.delete(
+        f"/users/{uuid.uuid4()}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert delete_response.status_code == 404
+    assert "User doesn't exist"
 
 
 def test_update_users_user_id_successfully_updates_an_existing_regular_user_for_self_request(
@@ -459,13 +593,15 @@ def test_update_users_user_id_successfully_updates_an_existing_regular_user_for_
         headers={"Authorization": f"Bearer {post_response.json()['access_token']}"},
         json={"username": "regular-user-changed"},
     )
+
+    delete_user(session, id=user.id)
     assert patch_response.status_code == 200
     assert patch_response.json()["id"] == str(user.id)
     assert patch_response.json()["username"] == "regular-user-changed"
 
 
 def test_create_user_returns_error_for_non_unique_username(
-    client: TestClient, token: str
+        session: Session, client: TestClient, token: str
 ):
     random_username = get_random_username(100)
     client.post(
@@ -478,7 +614,7 @@ def test_create_user_returns_error_for_non_unique_username(
         json={"username": random_username, "password": "password", "role": "ADMIN"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    print(post_response.json())
+    delete_user(session, username=random_username)
     assert post_response.status_code == 400
     assert "already exists" in post_response.json()["detail"]
 

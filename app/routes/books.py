@@ -3,7 +3,7 @@ import uuid
 
 from app.db_operations.dependencies import SessionDep
 from app.db_operations.book import BookNotFound, create_book, delete_book, read_all_books, read_book, update_book
-from app.db_operations.user import read_user
+from app.db_operations.user import read_user, UserNotFound
 from app.models.book import Book, BookCreate, BookPublic, BookUpdate
 from app.models.user import User, USER_ROLE
 from app.settings import Settings
@@ -30,6 +30,12 @@ router = APIRouter(prefix="/books")
 def create(session: SessionDep, current_user: Annotated[User, Depends(get_current_user)], cover_picture: UploadFile, data: Annotated[BookCreate, Depends(parse_create_book_data)]) -> Book:
     if data.user_id != current_user.id and current_user.role != USER_ROLE.ADMIN:
         raise HTTPException(status_code=401, detail="Not authorized")
+
+    if current_user.role == USER_ROLE.ADMIN:
+        try:
+            read_user(session, id=data.user_id)
+        except UserNotFound:
+            raise HTTPException(status_code=404, detail="User not found.")
 
     extension = ".err"
     match(cover_picture.content_type):
