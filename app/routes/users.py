@@ -4,14 +4,16 @@ from app.db_operations.dependencies import SessionDep
 from app.db_operations.user import create_user, delete_user, read_all_users, read_user, update_user, SelfFollowError, UserNotFound
 from app.models.book import Book, BookPublic
 from app.models.user import USER_ROLE, User, UserCreate, UserPublic, UserPublicWithFollowers, UserUpdate
-from app.util.auth import allowed_roles, jwt_encode, get_current_user
+from app.util.auth import allowed_roles, jwt_encode, get_current_user, oauth2_scheme
 from app.util.cryptography import verify_password
 from fastapi import APIRouter, Depends, Response, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from typing import Annotated
 
 router = APIRouter(prefix="/users")
+oauth2_scheme = OAuth2PasswordBearer("/users/login", auto_error=False)
 
 @router.post("/login")
 def login(session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]) -> dict:
@@ -28,7 +30,12 @@ def login(session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, D
     return {"access_token": token, "token_type": "bearer", "user": user}
 
 @router.post("", response_model=UserPublic)
-def create(session: SessionDep, data: UserCreate) -> User:
+def create(session: SessionDep, data: UserCreate, token: Annotated[str, Depends(oauth2_scheme)]) -> User:
+    if data.role == USER_ROLE.ADMIN:
+        user = get_current_user(token, session)
+        if user.role != USER_ROLE.ADMIN:
+            raise HTTPException(status_code=401, detail="Only admins can create admin users.")
+
     try:
         new_user = create_user(session, data)
     except IntegrityError:
@@ -71,8 +78,11 @@ def update(session: SessionDep, user_id: uuid.UUID, data: UserUpdate, current_us
 def delete(session: SessionDep, user_id: uuid.UUID, current_user: Annotated[User, Depends(get_current_user)]) -> Response:
     if current_user.id != id and current_user.role != USER_ROLE.ADMIN:
         raise HTTPException(status_code=401, detail="Not authorized")
+    try:
+        delete_user(session, id=user_id)
+    except UserNotFound:
+        raise HTTPException(status_code=404, detail="User doesn't exist")
 
-    delete_user(session, id=user_id)
     return Response(status_code=200, content="OK")
 
 @router.get("/{user_id}/books", response_model=list[BookPublic], dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER]))])

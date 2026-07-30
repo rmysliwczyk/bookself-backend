@@ -117,19 +117,6 @@ def test_image_fixture_png() -> bytes:
 
     return test_image
 
-def test_create_users_successfully_adds_valid_user(client: TestClient, token: str):
-    global existing_user_id
-    post_response = client.post(
-        "/users",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"username": "test-1", "password": "pass-1", "role": "ADMIN"},
-    )
-    assert post_response.status_code == 200
-    assert post_response.json()["username"] == "test-1"
-    assert post_response.json()["role"] == "ADMIN"
-    existing_user_id = post_response.json()["id"]
-
-
 def test_create_books_returns_401_when_no_valid_auth_token_included(
     session: Session, client: TestClient
 ):
@@ -169,6 +156,23 @@ def test_create_books_successfully_adds_valid_book(
     assert post_response.json()["rating"] == 5
     assert post_response.json()["user_id"] == str(regular_user.id)
 
+def test_create_books_fails_if_non_existent_user_id_is_provided_when_requesting_as_admin(
+        client: TestClient, token: str, test_image: bytes
+):
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(uuid.uuid4()),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert post_response.status_code == 404
+    assert "User not found." in post_response.json()['detail']
 
 def test_create_books_returns_401_when_trying_to_add_book_to_other_user(
         session: Session, client: TestClient, regular_token: str, test_image: bytes
