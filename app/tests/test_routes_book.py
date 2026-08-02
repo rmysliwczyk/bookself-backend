@@ -342,7 +342,6 @@ def test_delete_books_book_id_raises_exception_for_non_existing_book(
 def test_delete_books_book_id_raises_exception_for_other_user_book(
         session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
 ):
-    # TODO - Zrobić zielone
     data = json.dumps({
             "title": "book1",
             "rating": 5,
@@ -454,3 +453,75 @@ def test_cover_picture_can_be_retrieved(
     request_url = f"/books/{settings.media_base_url}{filename}"
     get_response = client.get(request_url)
     assert get_response.status_code == 200
+
+def test_read_book_book_id_successfully_returns_requested_book(
+        session: Session, client: TestClient, regular_user: User, regular_token: str, test_image: bytes
+):
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert post_response.status_code == 200
+
+    get_response = client.get(
+        f"/books/{post_response.json()['id']}",
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    delete_book(session, id=uuid.UUID(post_response.json()['id']))
+    assert get_response.status_code == 200
+    assert post_response.json()["title"] == "book1"
+    assert post_response.json()["rating"] == 5
+    assert post_response.json()["user_id"] == str(regular_user.id)
+
+
+def test_read_book_book_id_returns_404_for_non_existient_book(
+        client: TestClient, regular_token: str
+):
+    get_response = client.get(
+        f"/books/{uuid.uuid4()}",
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert get_response.status_code == 404
+    assert "Book not found" in get_response.json()['detail']
+
+
+def test_read_book_book_id_returns_404_for_existing_book_of_other_user_with_visibility_set_to_false(
+        session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
+):
+    data = json.dumps({
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": False,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"})
+    post_response = client.post(
+        "/books",
+        data={"data": data},
+        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+    assert post_response.status_code == 200
+    book_id = post_response.json()['id']
+
+    # Creating and logging as other user
+    create_user(session, UserCreate(username='a', password='a', role=USER_ROLE.REGULAR_USER))
+    post_response = client.post(
+        "/users/login", data={"username": "a", "password": "a"}
+    )
+    user_id = post_response.json()['user']['id']
+
+    get_response = client.get(f"/books/{book_id}", headers={"Authorization": f"Bearer {post_response.json()['access_token']}"})
+
+    delete_book(session, id=uuid.UUID(book_id))
+    delete_user(session, id=uuid.UUID(user_id))
+
+    assert get_response.status_code == 404
+    assert "Book not found" in get_response.json()['detail']
