@@ -58,6 +58,17 @@ def read_all(session: SessionDep) -> list[Book]:
     books = read_all_books(session)
     return books
 
+@router.get("/{book_id}", response_model=BookPublic, dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER]))])
+def read_one(session: SessionDep, book_id: uuid.UUID, current_user: Annotated[User, Depends(get_current_user)]) -> Book:
+    try:
+        book = read_book(session, id=book_id)
+        if book.user_id != current_user.id and current_user.role != USER_ROLE.ADMIN and book.visibility_to_others == False:
+            raise BookNotFound("Book can't be shown")
+    except BookNotFound:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    return book
+
 @router.patch("/{book_id}", response_model=BookPublic, dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN,USER_ROLE.REGULAR_USER]))])
 def update(session: SessionDep, current_user: Annotated[User, Depends(get_current_user)], book_id: uuid.UUID, data: BookUpdate) -> Book:
     if ("user_id" in data.model_dump()):
