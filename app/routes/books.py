@@ -12,22 +12,15 @@ from fastapi import Depends, Response, Form, UploadFile, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
 from fastapi.routing import APIRouter
+from PIL import Image
 from pydantic import ValidationError
 from typing import Annotated
-
-def parse_create_book_data(data: str = Form()) -> BookCreate:
-    parsed_json = json.loads(data)
-    try:
-        return_value = BookCreate.model_validate(parsed_json)
-    except ValidationError as e:
-        raise RequestValidationError(e.errors())
-    return return_value
 
 settings = Settings()
 
 router = APIRouter(prefix="/books")
 @router.post("", response_model=BookPublic, dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN, USER_ROLE.REGULAR_USER]))])
-def create(session: SessionDep, current_user: Annotated[User, Depends(get_current_user)], cover_picture: UploadFile, data: Annotated[BookCreate, Depends(parse_create_book_data)]) -> Book:
+def create(session: SessionDep, current_user: Annotated[User, Depends(get_current_user)], data: BookCreate) -> Book:
     if data.user_id != current_user.id and current_user.role != USER_ROLE.ADMIN:
         raise HTTPException(status_code=401, detail="Not authorized")
 
@@ -37,20 +30,7 @@ def create(session: SessionDep, current_user: Annotated[User, Depends(get_curren
         except UserNotFound:
             raise HTTPException(status_code=404, detail="User not found.")
 
-    extension = ".err"
-    match(cover_picture.content_type):
-        case "image/jpeg":
-            extension = ".jpg"
-        case "image/png":
-            extension = ".png"
-        case _:
-            raise RequestValidationError("Invalid image format")
-
-    filepath = f"{settings.media_base_url}{cover_picture.filename.split('.')[0] if cover_picture.filename else 'unkown'}_{str(data.user_id)}{extension}"
-    with open(filepath, "wb") as f:
-        f.write(cover_picture.file.read())
-    file_url = f"{settings.api_url}books/{filepath}"
-    new_book = create_book(session, data, cover_photo_url=file_url)
+    new_book = create_book(session, data)
     return new_book
 
 @router.get("", response_model=list[BookPublic], dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN]))])
@@ -91,6 +71,31 @@ def delete(session: SessionDep, current_user: Annotated[User,Depends(get_current
     delete_book(session, id=book_id)
     return Response(status_code=200, content="OK")
 
-@router.get("/cover_images/{filename}")
-def get_cover_picture(filename: str) -> FileResponse:
-    return FileResponse(path=f"{settings.media_base_url}{filename}", media_type="image/jpeg", filename=filename)
+@router.put("/{book_id}/cover", dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN,USER_ROLE.REGULAR_USER]))])
+def create_cover(session: SessionDep, book_id: uuid.UUID, current_user: Annotated[User, Depends(get_current_user)], cover_image_file: UploadFile) -> FileResponse:
+    settings = Settings()
+
+    try:
+        book = read_book(session, id=book_id)
+        if book.user_id != current_user.id and current_user.role != USER_ROLE.ADMIN and book.visibility_to_others == False:
+            raise BookNotFound("Book can't be shown")
+    except BookNotFound:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if (cover_image_file.content_type not in ["image/jpeg", "image/png"]):
+        raise RequestValidationError("Invalid image format")
+
+    filename = f"{str(book_id)}.jpg"
+    filepath = f"{settings.media_base_url}{filename}"
+    with Image.open(cover_image_file.file) as im:
+        im.save(filepath, format = "JPEG")
+
+    book_data = book.model_dump(exclude={"id"})
+    book_data["cover_photo_url"] = f"{settings.api_url}books/{book_id}/cover"
+    book = update_book(session, BookUpdate.model_validate(book_data), id=book_id)
+    print(book)
+    return FileResponse(path=filepath, media_type=cover_image_file.content_type, filename=filename)
+
+@router.get("/{book_id}/cover")
+def get_cover_picture(book_id: uuid.UUID) -> FileResponse:
+    return FileResponse(path=f"{settings.media_base_url}{book_id}.jpg", media_type="image/jpeg", filename=f'{book_id}.jpg')

@@ -1,4 +1,4 @@
-import base64
+import io
 import json
 import pytest
 import pathlib
@@ -13,6 +13,7 @@ from app.settings import Settings
 from app.tests.helper_functions import get_random_string
 from fastapi.testclient import TestClient
 from sqlmodel import create_engine, Session, StaticPool, SQLModel
+from PIL import Image, ImageChops
 
 existing_user_id = None
 existing_book_id = None
@@ -137,21 +138,23 @@ def test_create_books_returns_401_when_no_valid_auth_token_included(
 
 
 def test_create_books_successfully_adds_valid_book(
-        client: TestClient, regular_user: User, regular_token: str, test_image: bytes
+        session: Session, client: TestClient, regular_user: User, regular_token: str
 ):
-    data = json.dumps({
+    post_response = client.post(
+        "/books",
+        json = {
             "title": "book1",
             "rating": 5,
             "visibility_to_others": True,
             "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {regular_token}"},
     )
+
     assert post_response.status_code == 200
+    delete_book(session, id=uuid.UUID(post_response.json()['id']))
+
     assert post_response.json()["title"] == "book1"
     assert post_response.json()["rating"] == 5
     assert post_response.json()["user_id"] == str(regular_user.id)
@@ -159,16 +162,15 @@ def test_create_books_successfully_adds_valid_book(
 def test_create_books_fails_if_non_existent_user_id_is_provided_when_requesting_as_admin(
         client: TestClient, token: str, test_image: bytes
 ):
-    data = json.dumps({
+    post_response = client.post(
+        "/books",
+        json = {
             "title": "book1",
             "rating": 5,
             "visibility_to_others": True,
             "user_id": str(uuid.uuid4()),
-            "isbn": "1111111111"})
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     assert post_response.status_code == 404
@@ -187,21 +189,19 @@ def test_create_books_returns_401_when_trying_to_add_book_to_other_user(
         ),
     )
 
-    data = json.dumps({
-            "title": "a",
-            "visibility_to_others": "true",
-            "rating": "1",
-            "user_id": str(other_user.id),
-            "isbn": "1111111111",
-        })
-
     post_response = client.post(
         "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+        json = {
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(other_user.id),
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {regular_token}"},
     )
 
+    delete_user(session, id=other_user.id)
     assert post_response.status_code == 401
     assert "Not authorized" in post_response.json()["detail"]
 
@@ -258,16 +258,15 @@ def test_read_books_successfully_reads_all_books(session: Session, client: TestC
 def test_update_books_book_id_successfully_updates_an_existing_book(
         session: Session, client: TestClient, regular_user: User, regular_token: str, test_image: bytes
 ):
-    data = json.dumps({
+    post_response = client.post(
+        "/books",
+        json = {
             "title": "book1",
             "rating": 5,
             "visibility_to_others": True,
             "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {regular_token}"},
     )
     assert post_response.status_code == 200
@@ -275,6 +274,8 @@ def test_update_books_book_id_successfully_updates_an_existing_book(
     patch_response = client.patch(
             f"/books/{post_response.json()['id']}", json={"title": "book-1", "author": "john doe"}, headers={"Authorization": f"Bearer {regular_token}"}
     )
+
+    delete_book(session, id=uuid.UUID(post_response.json()["id"]))
     assert patch_response.status_code == 200
     assert patch_response.json()["title"] == "book-1"
     assert patch_response.json()["author"] == "john doe"
@@ -283,17 +284,15 @@ def test_update_books_book_id_successfully_updates_an_existing_book(
 def test_update_books_book_id_fails_updating_an_existing_book_with_other_user_id(
         session: Session, client: TestClient, regular_user: User, regular_token: str, test_image: bytes
 ):
-    data = json.dumps({
+    post_response = client.post(
+        "/books",
+        json = {
             "title": "book1",
             "rating": 5,
             "visibility_to_others": True,
             "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
-
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {regular_token}"},
     )
     assert post_response.status_code == 200
@@ -302,6 +301,8 @@ def test_update_books_book_id_fails_updating_an_existing_book_with_other_user_id
     patch_response = client.patch(
             f"/books/{post_response.json()['id']}", json={"user_id": str(random_uuid)}, headers={"Authorization": f"Bearer {regular_token}"}
     )
+
+    delete_book(session, id=uuid.UUID(post_response.json()["id"]))
     assert patch_response.status_code == 400
     assert "Cannot assign books to other users" in patch_response.json()["detail"]
 
@@ -309,20 +310,17 @@ def test_update_books_book_id_fails_updating_an_existing_book_with_other_user_id
 def test_delete_books_book_id_successfully_deletes_an_existing_book(
         session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
 ):
-    
-    data = json.dumps({
-            "title": "book-to-be-deleted",
-            "rating": 5,
-            "visibility_to_others": True,
-            "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
-
     post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
+            "/books",
+            json = {
+                "title": "book1",
+                "rating": 5,
+                "visibility_to_others": True,
+                "user_id": str(regular_user.id),
+                "isbn": "1111111111"
+                },
+            headers={"Authorization": f"Bearer {regular_token}"},
+            )
     assert post_response.status_code == 200
 
     delete_response = client.delete(f"/books/{post_response.json()['id']}", headers={"Authorization" : f"Bearer {regular_token}"})
@@ -342,18 +340,17 @@ def test_delete_books_book_id_raises_exception_for_non_existing_book(
 def test_delete_books_book_id_raises_exception_for_other_user_book(
         session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
 ):
-    data = json.dumps({
-            "title": "book1",
-            "rating": 5,
-            "visibility_to_others": True,
-            "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
     post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
+            "/books",
+            json = {
+                "title": "book1",
+                "rating": 5,
+                "visibility_to_others": True,
+                "user_id": str(regular_user.id),
+                "isbn": "1111111111"
+                },
+            headers={"Authorization": f"Bearer {regular_token}"},
+            )
     assert post_response.status_code == 200
     book_id = post_response.json()['id']
 
@@ -372,109 +369,46 @@ def test_delete_books_book_id_raises_exception_for_other_user_book(
     delete_user(session, id=uuid.UUID(user_id))
 
 
-def test_create_book_raises_validation_error_for_incorrect_image_format(
-        client: TestClient, regular_user: User, regular_token: str, test_image: bytes
-):
-    data = json.dumps({
-            "title": "book1",
-            "rating": 5,
-            "visibility_to_others": True,
-            "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.img", test_image, "image/img")},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
-
-    assert post_response.status_code == 422
-    assert "Invalid image format" in post_response.json()["detail"]
-
-def test_create_books_successfully_adds_valid_book_when_using_png(
-        client: TestClient, regular_user: User, regular_token: str, test_image_png: bytes
-):
-    data = json.dumps({
-            "title": "book1",
-            "rating": 5,
-            "visibility_to_others": True,
-            "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.png", test_image_png, "image/png")},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
-    assert post_response.status_code == 200
-    assert post_response.json()["title"] == "book1"
-    assert post_response.json()["rating"] == 5
-    assert post_response.json()["user_id"] == str(regular_user.id)
-
 def test_create_books_raises_validation_error_when_title_is_missing(
         client: TestClient, regular_user: User, regular_token: str, test_image: bytes
 ):
-    data = json.dumps({
-            "rating": 5,
-            "visibility_to_others": True,
-            "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
     post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
+            "/books",
+            json = {
+                "rating": 5,
+                "visibility_to_others": True,
+                "user_id": str(regular_user.id),
+                "isbn": "1111111111"
+                },
+            headers={"Authorization": f"Bearer {regular_token}"},
+            )
+
     assert post_response.status_code == 422
     assert "title" in post_response.json()["detail"][0]['loc']
 
-def test_cover_picture_can_be_retrieved(
-        client: TestClient, regular_user: User, regular_token: str, test_image_png: bytes
-):
-    data = json.dumps({
-            "title": "book1",
-            "rating": 5,
-            "visibility_to_others": True,
-            "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.png", test_image_png, "image/png")},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
-    assert post_response.status_code == 200
-    assert post_response.json()["title"] == "book1"
-    assert post_response.json()["rating"] == 5
-    assert post_response.json()["user_id"] == str(regular_user.id)
-
-    settings = Settings()
-    filename = post_response.json()['cover_photo_url'].split("/")[-1]
-    request_url = f"/books/{settings.media_base_url}{filename}"
-    get_response = client.get(request_url)
-    assert get_response.status_code == 200
 
 def test_read_book_book_id_successfully_returns_requested_book(
         session: Session, client: TestClient, regular_user: User, regular_token: str, test_image: bytes
 ):
-    data = json.dumps({
-            "title": "book1",
-            "rating": 5,
-            "visibility_to_others": True,
-            "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
     post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
+            "/books",
+            json = {
+                "title": "book1",
+                "rating": 5,
+                "visibility_to_others": True,
+                "user_id": str(regular_user.id),
+                "isbn": "1111111111"
+                },
+            headers={"Authorization": f"Bearer {regular_token}"},
+            )
+
     assert post_response.status_code == 200
 
     get_response = client.get(
         f"/books/{post_response.json()['id']}",
         headers={"Authorization": f"Bearer {regular_token}"},
     )
+
     delete_book(session, id=uuid.UUID(post_response.json()['id']))
     assert get_response.status_code == 200
     assert post_response.json()["title"] == "book1"
@@ -496,18 +430,17 @@ def test_read_book_book_id_returns_404_for_non_existient_book(
 def test_read_book_book_id_returns_404_for_existing_book_of_other_user_with_visibility_set_to_false(
         session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
 ):
-    data = json.dumps({
-            "title": "book1",
-            "rating": 5,
-            "visibility_to_others": False,
-            "user_id": str(regular_user.id),
-            "isbn": "1111111111"})
     post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
-        headers={"Authorization": f"Bearer {regular_token}"},
-    )
+            "/books",
+            json = {
+                "title": "book1",
+                "rating": 5,
+                "visibility_to_others": False,
+                "user_id": str(regular_user.id),
+                "isbn": "1111111111"
+                },
+            headers={"Authorization": f"Bearer {regular_token}"},
+            )
     assert post_response.status_code == 200
     book_id = post_response.json()['id']
 
@@ -525,3 +458,200 @@ def test_read_book_book_id_returns_404_for_existing_book_of_other_user_with_visi
 
     assert get_response.status_code == 404
     assert "Book not found" in get_response.json()['detail']
+
+def test_put_book_cover_successfully_updates_book_cover(
+    session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
+):
+    post_response = client.post(
+        "/books",
+        json={
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"
+        },
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert post_response.status_code == 200
+    book_id = post_response.json()['id']
+
+    put_response = client.put(
+        f'/books/{book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.jpg', test_image ,'image/jpeg')},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert put_response.status_code == 200
+    delete_book(session, id=uuid.UUID(book_id))
+
+    image_sent = Image.open(io.BytesIO(test_image))
+    with io.BytesIO() as f:
+        image_sent.save(f, format="JPEG")
+        image_sent = Image.open(f)
+        image_sent.load()
+    image_received = Image.open(io.BytesIO(put_response.content))
+    difference = ImageChops.difference(image_sent, image_received)
+    assert difference.getbbox() == None
+
+def test_create_cover_raises_validation_error_for_incorrect_image_format(
+        session: Session, client: TestClient, regular_user: User, regular_token: str, test_image: bytes
+):
+    post_response = client.post(
+        "/books",
+        json={
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"
+        },
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert post_response.status_code == 200
+    book_id = post_response.json()['id']
+
+    put_response = client.put(
+        f'/books/{book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.img', test_image ,'image/img')},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert put_response.status_code == 422
+    assert "Invalid image format" in put_response.json()["detail"]
+    delete_book(session, id=uuid.UUID(book_id))
+
+def test_create_cover_successfully_adds_valid_cover_when_using_png(
+        session: Session, client: TestClient, regular_user: User, regular_token: str, test_image_png: bytes
+):
+    post_response = client.post(
+        "/books",
+        json={
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"
+        },
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert post_response.status_code == 200
+    book_id = post_response.json()['id']
+
+    put_response = client.put(
+        f'/books/{book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.png', test_image_png ,'image/png')},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert put_response.status_code == 200
+    delete_book(session, id=uuid.UUID(book_id))
+
+    image_sent = Image.open(io.BytesIO(test_image_png))
+    with io.BytesIO() as f:
+        image_sent.save(f, format="JPEG")
+        image_sent = Image.open(f)
+        image_sent.load()
+    image_received = Image.open(io.BytesIO(put_response.content))
+    difference = ImageChops.difference(image_sent, image_received)
+    assert difference.getbbox() == None
+
+def test_cover_picture_can_be_retrieved(
+        session: Session, client: TestClient, regular_user: User, regular_token: str, test_image_png: bytes
+):
+    post_response = client.post(
+        "/books",
+        json={
+            "title": "book1",
+            "rating": 5,
+            "visibility_to_others": True,
+            "user_id": str(regular_user.id),
+            "isbn": "1111111111"
+        },
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert post_response.status_code == 200
+    book_id = post_response.json()['id']
+
+    put_response = client.put(
+        f'/books/{book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.png', test_image_png ,'image/png')},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert put_response.status_code == 200
+
+    get_response = client.get(
+        f'/books/{book_id}',
+        headers={"Authorization": f"Bearer {regular_token}"}
+    )
+
+    assert get_response.status_code == 200
+
+    settings = Settings()
+    cover_url = get_response.json()['cover_photo_url']
+    assert cover_url == f"{settings.api_url}books/{book_id}/cover"
+    get_response = client.get(cover_url)
+    assert get_response.status_code == 200
+    image_sent = Image.open(io.BytesIO(test_image_png))
+    with io.BytesIO() as f:
+        image_sent.save(f, format="JPEG")
+        image_sent = Image.open(f)
+        image_sent.load()
+    image_received = Image.open(io.BytesIO(get_response.content))
+    difference = ImageChops.difference(image_sent, image_received)
+    assert difference.getbbox() == None
+    delete_book(session, id=uuid.UUID(book_id))
+
+def test_create_cover_raises_404_for_non_existent_book(
+        session: Session, client: TestClient, regular_token: str, test_image_png: bytes
+):
+    put_response = client.put(
+        f'/books/{uuid.uuid4()}/cover',
+        files={'cover_image_file': ('cover_image_file.png', test_image_png ,'image/png')},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert put_response.status_code == 404
+    assert 'Book not found' in put_response.json()['detail']
+
+def test_create_cover_returns_404_when_updating_other_user_book_cover(
+        session: Session, client: TestClient, regular_token: str, regular_user: User, test_image: bytes
+):
+    post_response = client.post(
+            "/books",
+            json = {
+                "title": "book1",
+                "rating": 5,
+                "visibility_to_others": False,
+                "user_id": str(regular_user.id),
+                "isbn": "1111111111"
+                },
+            headers={"Authorization": f"Bearer {regular_token}"},
+            )
+    assert post_response.status_code == 200
+    book_id = post_response.json()['id']
+
+    # Creating and logging as other user
+    create_user(session, UserCreate(username='a', password='a', role=USER_ROLE.REGULAR_USER))
+    post_response = client.post(
+        "/users/login", data={"username": "a", "password": "a"}
+    )
+    user_id = post_response.json()['user']['id']
+    token = post_response.json()['access_token']
+
+    put_response = client.put(
+        f'/books/{book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.jpg', test_image ,'image/jpeg')},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    delete_book(session, id=uuid.UUID(book_id))
+    delete_user(session, id=uuid.UUID(user_id))
+
+    assert put_response.status_code == 404
+    assert 'Book not found' in put_response.json()['detail']
