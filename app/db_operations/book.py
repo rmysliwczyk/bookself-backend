@@ -10,13 +10,10 @@ class BookNotFound(Exception):
         super().__init__(message)
 
 
-def create_book(session: Session, book: BookCreate, cover_photo_url: str | None = None) -> Book:
+def create_book(session: Session, book: BookCreate) -> Book:
 
     new_book = None
-    if cover_photo_url:
-        new_book = Book.model_validate({**book.model_dump(), "cover_photo_url": cover_photo_url})
-    else:
-        new_book = Book.model_validate(book)
+    new_book = Book.model_validate(book)
 
     session.add(new_book)
     session.commit()

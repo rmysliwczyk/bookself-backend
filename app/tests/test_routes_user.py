@@ -1,4 +1,3 @@
-import json
 import pathlib
 import pytest
 import random
@@ -514,29 +513,37 @@ def test_update_users_user_id_successfully_removes_all_followed_users(
 def test_read_user_user_id_successfully_returns_user_with_book_information_included(
         client: TestClient, regular_user: User, regular_token: str, token: str, test_image: bytes
 ):
-
-    data = json.dumps({
+    post_response = client.post(
+        "/books",
+        json={
             "title": "book1",
             "rating": 5,
             "visibility_to_others": True,
             "user_id": str(regular_user.id),
-            "isbn": "1111111111",
-        })
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {regular_token}"},
     )
 
     assert post_response.status_code == 200
+    book_id = post_response.json()['id']
+
+    put_response = client.put(
+        f'/books/{book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.jpg', test_image ,'image/jpeg')},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert put_response.status_code == 200
 
     get_response = client.get(
         f"/users/{regular_user.id}", headers={"Authorization": f"Bearer {token}"}
     )
+
     assert get_response.status_code == 200
     assert get_response.json()["books"][0]["title"] == "book1"
-    client.delete(f"/books/{post_response.json()['id']}", headers={"Authorization" : f"Bearer {regular_token}"})
+    assert get_response.json()["books"][0]["id"] == book_id
+    client.delete(f"/books/{book_id}", headers={"Authorization" : f"Bearer {regular_token}"})
 
 
 def test_delete_user_user_id_successfully_deletes_an_existing_user(
@@ -698,39 +705,51 @@ def test_read_users_user_id_books_successfully_reads_all_books_for_a_user(
         test_image: bytes
     ):
 
-    data = json.dumps({
+    post_response = client.post(
+        "/books",
+        json={
             "title": "book99",
             "rating": 5,
             "visibility_to_others": True,
             "user_id": str(regular_user.id),
-            "isbn": "1111111111",
-        })
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {regular_token}"},
     )
 
     assert post_response.status_code == 200
     first_book_id = post_response.json()['id']
 
-    data = json.dumps({
+    put_response = client.put(
+        f'/books/{first_book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.jpg', test_image ,'image/jpeg')},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert put_response.status_code == 200
+
+    post_response = client.post(
+        "/books",
+        json={
             "title": "book101",
             "rating": 5,
             "visibility_to_others": True,
             "user_id": str(regular_user.id),
-            "isbn": "1111111111",
-        })
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {regular_token}"},
     )
 
     assert post_response.status_code == 200
     second_book_id = post_response.json()['id']
+
+    put_response = client.put(
+        f'/books/{second_book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.jpg', test_image ,'image/jpeg')},
+        headers={"Authorization": f"Bearer {regular_token}"},
+    )
+
+    assert put_response.status_code == 200
 
     get_response = client.get(
         f"/users/{regular_user.id}/books", headers={"Authorization": f"Bearer {regular_token}"}
@@ -761,34 +780,38 @@ def test_read_books_user_id_requested_by_regular_user_for_other_user_lists_only_
     assert post_response.status_code == 200
     token = post_response.json()["access_token"]
 
-    data = json.dumps({
+    post_response = client.post(
+        "/books",
+        json={
             "title": "a",
             "rating": 5,
             "visibility_to_others": "true",
             "user_id": str(other_user.id),
-            "isbn": "1111111111",
-        })
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
     assert post_response.status_code == 200
     first_book_id = post_response.json()['id']
 
-    data = json.dumps({
+    put_response = client.put(
+        f'/books/{first_book_id}/cover',
+        files={'cover_image_file': ('cover_image_file.jpg', test_image ,'image/jpeg')},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert put_response.status_code == 200
+
+    post_response = client.post(
+        "/books",
+        json={
             "title": "b",
             "rating": 5,
             "visibility_to_others": "false",
             "user_id": str(other_user.id),
-            "isbn": "1111111111",
-        })
-    post_response = client.post(
-        "/books",
-        data={"data": data},
-        files={"cover_picture": ("test.jpg", test_image, "image/jpeg")},
+            "isbn": "1111111111"
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 

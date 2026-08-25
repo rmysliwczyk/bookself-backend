@@ -59,3 +59,4 @@ class BookUpdate(SQLModel):
     review: str | None = Field(max_length=MAX_REVIEW_LENGTH, default=None)
     isbn: ISBN | None = None
     user_id: uuid.UUID | None = None
+    cover_photo_url: HttpUrl | None = Field(default=None, sa_type=HttpUrlType)
