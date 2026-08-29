@@ -88,6 +88,7 @@ def create_cover(session: SessionDep, book_id: uuid.UUID, current_user: Annotate
     filename = f"{str(book_id)}.jpg"
     filepath = f"{settings.media_base_url}{filename}"
     with Image.open(cover_image_file.file) as im:
+        im = im.convert("RGB")
         im.save(filepath, format = "JPEG")
 
     book_data = book.model_dump(exclude={"id"})
