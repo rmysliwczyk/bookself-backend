@@ -551,6 +551,7 @@ def test_create_cover_successfully_adds_valid_cover_when_using_png(
     delete_book(session, id=uuid.UUID(book_id))
 
     image_sent = Image.open(io.BytesIO(test_image_png))
+    image_sent = image_sent.convert("RGB")
     with io.BytesIO() as f:
         image_sent.save(f, format="JPEG")
         image_sent = Image.open(f)
@@ -598,6 +599,7 @@ def test_cover_picture_can_be_retrieved(
     get_response = client.get(cover_url)
     assert get_response.status_code == 200
     image_sent = Image.open(io.BytesIO(test_image_png))
+    image_sent = image_sent.convert("RGB")
     with io.BytesIO() as f:
         image_sent.save(f, format="JPEG")
         image_sent = Image.open(f)
