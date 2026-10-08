@@ -51,10 +51,11 @@ def read_one(session: SessionDep, book_id: uuid.UUID, current_user: Annotated[Us
 
 @router.patch("/{book_id}", response_model=BookPublic, dependencies=[Depends(allowed_roles([USER_ROLE.ADMIN,USER_ROLE.REGULAR_USER]))])
 def update(session: SessionDep, current_user: Annotated[User, Depends(get_current_user)], book_id: uuid.UUID, data: BookUpdate) -> Book:
-    if ("user_id" in data.model_dump()):
-        new_user_id = data.model_dump()["user_id"]
-        if new_user_id != None and new_user_id != current_user.id:
-            raise HTTPException(status_code=400, detail="Cannot assign books to other users")
+    book = read_book(session, id=book_id)
+
+    if data.model_dump()['user_id'] and book.user_id != data.model_dump()['user_id']:
+        raise HTTPException(status_code=400, detail="Cannot assign books to other users")
+
     book = update_book(session, data, id=book_id)
     return book
 
@@ -94,7 +95,6 @@ def create_cover(session: SessionDep, book_id: uuid.UUID, current_user: Annotate
     book_data = book.model_dump(exclude={"id"})
     book_data["cover_photo_url"] = f"{settings.api_url}books/{book_id}/cover"
     book = update_book(session, BookUpdate.model_validate(book_data), id=book_id)
-    print(book)
     return FileResponse(path=filepath, media_type=cover_image_file.content_type, filename=filename)
 
 @router.get("/{book_id}/cover")
