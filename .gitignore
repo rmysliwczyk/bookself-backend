@@ -1,3 +1,7 @@
+# Cover images for testing
+cover_images/*.jpg
+cover_images/*.png
+
 # Database
 *.db
 
